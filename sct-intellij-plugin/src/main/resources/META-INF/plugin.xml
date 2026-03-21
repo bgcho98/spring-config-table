@@ -1,0 +1,39 @@
+<idea-plugin>
+    <id>com.pinkmandarin.sct</id>
+    <name>Spring Config Table</name>
+    <vendor>PinkMandarin</vendor>
+    <resource-bundle>messages.SctBundle</resource-bundle>
+    <description><![CDATA[
+        Generates per-environment Spring Boot YAML config files from a master Markdown table.<br/>
+        <ul>
+            <li>Auto-regenerates YAML when the master Markdown file changes</li>
+            <li>Manual: Tools → Generate YAML from Master Markdown</li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <backgroundPostStartupActivity
+                implementation="com.pinkmandarin.sct.intellij.SctStartupActivity"/>
+        <projectConfigurable
+                instance="com.pinkmandarin.sct.intellij.SctConfigurable"
+                id="com.pinkmandarin.sct.settings"
+                displayName="Spring Config Table"
+                parentId="tools"/>
+        <projectService
+                serviceImplementation="com.pinkmandarin.sct.intellij.SctSettings"/>
+        <projectService
+                serviceImplementation="com.pinkmandarin.sct.intellij.SctFileWatcher"/>
+        <notificationGroup id="sct"
+                           displayType="BALLOON"
+                           isLogByDefault="true"/>
+    </extensions>
+
+    <actions>
+        <action id="com.pinkmandarin.sct.GenerateYaml"
+                class="com.pinkmandarin.sct.intellij.GenerateYamlAction">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
