@@ -1,0 +1,133 @@
+# Spring Config Table (SCT)
+
+Markdown 테이블로 Spring Boot 멀티 환경 YAML 설정 파일을 관리하는 도구.
+
+하나의 마스터 Markdown 파일에서 모든 환경(dev, beta, real, gov, ...)의 설정을 한눈에 보고 편집할 수 있으며, 환경별 `application-{profile}.yml` 파일을 자동 생성합니다.
+
+## 마스터 Markdown 포맷
+
+```markdown
+## server
+
+| env | port | host |
+|-----|------|------|
+| _default | 8080 | localhost |
+| beta | 9090 | |
+| real | 80 | 0.0.0.0 |
+
+## spring.datasource
+
+| env | url | username |
+|-----|-----|----------|
+| _default | jdbc:mysql://localhost/db | root |
+| beta | jdbc:mysql://beta-db/db | |
+| real | jdbc:mysql://real-db/db | admin |
+```
+
+- `_default` = `application.yml` (기본 프로필)
+- 빈 셀 = default 값 상속
+- `null` = 명시적 null 오버라이드
+- `"값"` = 강제 문자열 (숫자나 boolean처럼 보이는 문자열 보존)
+
+## 모듈 구성
+
+| 모듈 | 설명 |
+|------|------|
+| `sct-core` | 파서, 라이터, 익스포터, 임포터 (핵심 라이브러리) |
+| `sct-cli` | CLI 도구 (migrate, generate 커맨드) |
+| `sct-maven-plugin` | Maven `generate-resources` 페이즈 통합 |
+| `sct-intellij-plugin` | IntelliJ 플러그인 (파일 감지, 자동 생성, 멀티 모듈 설정) |
+
+## 빠른 시작
+
+### 요구사항
+
+- Java 21+
+- Maven 3.9+
+
+### 빌드
+
+```bash
+# Maven 모듈 빌드 + 로컬 설치
+mvn clean install
+
+# IntelliJ 플러그인 빌드 (sct-core가 mavenLocal에 있어야 함)
+cd sct-intellij-plugin
+./gradlew buildPlugin
+```
+
+빌드 결과:
+- CLI fat JAR: `sct-cli/target/sct-cli-1.0.0-SNAPSHOT.jar`
+- IntelliJ 플러그인 ZIP: `sct-intellij-plugin/build/distributions/sct-intellij-plugin-1.0.0-SNAPSHOT.zip`
+
+### CLI 사용법
+
+```bash
+# 기존 YAML 파일들을 마스터 Markdown으로 마이그레이션
+java -jar sct-cli.jar migrate -i src/main/resources -o master-config.md
+
+# 마스터 Markdown에서 환경별 YAML 생성
+java -jar sct-cli.jar generate -i master-config.md -o src/main/resources
+```
+
+### Maven 플러그인
+
+```xml
+<plugin>
+    <groupId>com.pinkmandarin</groupId>
+    <artifactId>sct-maven-plugin</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <configuration>
+        <masterFile>${project.basedir}/master-config.md</masterFile>
+    </configuration>
+    <executions>
+        <execution>
+            <goals><goal>generate</goal></goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+`mvn compile` 이상 실행 시 `master-config.md` -> `src/main/resources/application*.yml` 자동 생성.
+
+### IntelliJ 플러그인
+
+1. **Settings > Plugins > Install Plugin from Disk** 에서 ZIP 설치
+2. **Settings > Tools > Spring Config Table** 에서 매핑 설정
+3. 마스터 파일 저장 시 자동 YAML 생성 (500ms debounce)
+4. **Tools > Generate YAML from Master Markdown** 으로 수동 실행
+
+멀티 모듈 프로젝트에서 모듈별로 다른 마스터 파일/출력 경로를 설정할 수 있습니다.
+
+## 이스케이프 규칙
+
+마스터 Markdown 테이블 값에서 특수 문자는 자동 이스케이프됩니다:
+
+| 문자 | Markdown 표기 | 설명 |
+|------|--------------|------|
+| `\|` | `\|` | 파이프 (셀 구분자 충돌 방지) |
+| `\n` | `\n` | 줄바꿈 |
+| `\\` | `\\` | 백슬래시 |
+| `\"` | `\"` | 따옴표 (quoted string 내부) |
+
+## 알려진 제약사항
+
+- 섹션 이름에 dot이 포함된 경우 (예: `com.example`), 첫 번째 dot 앞까지가 YAML 최상위 키로 사용됩니다. `## com.example.config` -> section=`com`, prefix=`example.config`
+- `---` 멀티 도큐먼트 YAML은 import 시 모든 도큐먼트가 병합됩니다
+- Markdown 테이블 셀의 앞뒤 공백은 trim됩니다. 공백이 중요한 값은 자동으로 따옴표 처리됩니다
+
+## 테스트
+
+```bash
+mvn -pl sct-core test
+```
+
+63개 테스트가 핵심 기능을 커버합니다:
+- Parser/Writer round-trip (파이프, 줄바꿈, 백슬래시, 따옴표, null, boolean/숫자형 문자열, 공백)
+- 멀티 도큐먼트 YAML import
+- Top-level scalar 값 round-trip
+- 전체 파이프라인 E2E (Markdown -> YAML 생성 + profile activation)
+
+## 라이선스
+
+PinkMandarin
