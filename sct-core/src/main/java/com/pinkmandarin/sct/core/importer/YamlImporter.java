@@ -73,7 +73,7 @@ public class YamlImporter {
     }
 
     @SuppressWarnings("unchecked")
-    List<Property> parseFile(Path file, String envName) throws IOException {
+    public List<Property> parseFile(Path file, String envName) throws IOException {
         var yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
         var properties = new ArrayList<Property>();
 
@@ -129,7 +129,7 @@ public class YamlImporter {
         }
     }
 
-    static String extractEnvName(Path file) {
+    public static String extractEnvName(Path file) {
         var fileName = file.getFileName().toString();
         var matcher = PROFILE_PATTERN.matcher(fileName);
         if (matcher.matches()) {

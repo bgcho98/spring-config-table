@@ -7,7 +7,9 @@
         Generates per-environment Spring Boot YAML config files from a master Markdown table.<br/>
         <ul>
             <li>Auto-regenerates YAML when the master Markdown file changes</li>
-            <li>Manual: Tools → Generate YAML from Master Markdown</li>
+            <li>Manual: Tools &rarr; Generate YAML from Master Markdown</li>
+            <li>YAML Lens: Select YAML files &rarr; Right-click &rarr; View as table with filtering</li>
+            <li>Migrate: Select YAML files &rarr; Right-click &rarr; Convert to master Markdown</li>
         </ul>
     ]]></description>
 
@@ -34,6 +36,14 @@
         <action id="com.pinkmandarin.sct.GenerateYaml"
                 class="com.pinkmandarin.sct.intellij.GenerateYamlAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action id="com.pinkmandarin.sct.YamlLens"
+                class="com.pinkmandarin.sct.intellij.YamlLensAction">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+        <action id="com.pinkmandarin.sct.MigrateToMarkdown"
+                class="com.pinkmandarin.sct.intellij.MigrateToMarkdownAction">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>
