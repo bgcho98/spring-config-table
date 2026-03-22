@@ -345,7 +345,7 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         body { font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 13px;
                background: var(--bg); color: var(--fg); padding: 0; margin: 0; }
 
-        .toolbar { position: sticky; top: 0; z-index: 100; background: var(--toolbar-bg);
+        .toolbar { background: var(--toolbar-bg);
                    padding: 8px 16px; border-bottom: 1px solid var(--border);
                    display: flex; align-items: center; gap: 8px; }
         .toolbar button { background: var(--btn-bg); color: var(--btn-fg); border: none;
@@ -366,8 +366,7 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
                  min-width: 100px; max-width: 400px; white-space: nowrap; overflow: hidden;
                  text-overflow: ellipsis; position: relative; }
         th { background: var(--hdr-bg); color: var(--hdr-fg); font-weight: 600;
-             font-size: 12px; position: sticky; top: 45px; z-index: 10;
-             cursor: text; user-select: text; }
+             font-size: 12px; cursor: text; user-select: text; }
         th:focus { outline: 2px solid var(--focus-border); }
 
         .env-hdr { min-width: 110px; font-weight: 700; }
