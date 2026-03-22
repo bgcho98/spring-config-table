@@ -104,6 +104,9 @@ public class YamlImporter {
         properties.removeIf(p ->
                 "spring".equals(p.section()) && ON_PROFILE_KEY.equals(p.key()));
 
+        // Extract inline comments from raw YAML and attach to properties
+        attachComments(file, properties);
+
         return properties;
     }
 
@@ -131,6 +134,69 @@ public class YamlImporter {
                 result.add(Property.of(section, key, envName, value));
             }
         }
+    }
+
+    /**
+     * Reads the raw YAML file and extracts inline comments (# ...) on property lines.
+     * Matches comments to properties by finding the last key segment on each line.
+     */
+    private void attachComments(Path file, List<Property> properties) {
+        try {
+            var lines = Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8);
+            // Build a map: last key segment → comment
+            var commentMap = new HashMap<String, String>();
+            for (var line : lines) {
+                var commentIdx = findInlineComment(line);
+                if (commentIdx < 0) continue;
+
+                var comment = line.substring(commentIdx + 1).trim();
+                if (comment.isEmpty()) continue;
+
+                // Extract the key from the YAML line (before the colon)
+                var beforeComment = line.substring(0, commentIdx);
+                var colonIdx = beforeComment.indexOf(':');
+                if (colonIdx < 0) continue;
+
+                var keyPart = beforeComment.substring(0, colonIdx).trim();
+                // keyPart could be "  port" or "    url" — last segment after indentation
+                if (!keyPart.isEmpty()) {
+                    commentMap.put(keyPart, comment);
+                }
+            }
+
+            if (commentMap.isEmpty()) return;
+
+            // Match comments to properties by last key segment
+            for (int i = 0; i < properties.size(); i++) {
+                var prop = properties.get(i);
+                if (prop.hasComment()) continue;
+
+                var lastSegment = lastKeySegment(prop.key());
+                var comment = commentMap.get(lastSegment);
+                if (comment != null) {
+                    properties.set(i, prop.withComment(comment));
+                }
+            }
+        } catch (IOException e) {
+            // Ignore — comments are best-effort
+        }
+    }
+
+    /** Find index of inline # comment, ignoring # inside quotes */
+    private int findInlineComment(String line) {
+        boolean inSingleQuote = false, inDoubleQuote = false;
+        for (int i = 0; i < line.length(); i++) {
+            var ch = line.charAt(i);
+            if (ch == '\'' && !inDoubleQuote) inSingleQuote = !inSingleQuote;
+            else if (ch == '"' && !inSingleQuote) inDoubleQuote = !inDoubleQuote;
+            else if (ch == '#' && !inSingleQuote && !inDoubleQuote) return i;
+        }
+        return -1;
+    }
+
+    private String lastKeySegment(String key) {
+        var dotIdx = key.lastIndexOf('.');
+        return dotIdx >= 0 ? key.substring(dotIdx + 1) : key;
     }
 
     public static String extractEnvName(Path file) {

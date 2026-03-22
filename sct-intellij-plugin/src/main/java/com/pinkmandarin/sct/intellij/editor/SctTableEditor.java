@@ -236,7 +236,7 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         var updated = new ArrayList<Property>();
         for (var p : allProperties) {
             if (p.section().equals(oldName)) {
-                updated.add(new Property(newName, p.key(), p.env(), p.value(), p.valueType()));
+                updated.add(new Property(newName, p.key(), p.env(), p.value(), p.valueType(), p.comment()));
             } else {
                 updated.add(p);
             }
@@ -254,7 +254,7 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         var updated = new ArrayList<Property>();
         for (var p : allProperties) {
             if (p.section().equals(section) && p.key().equals(oldKey)) {
-                updated.add(new Property(p.section(), newKey, p.env(), p.value(), p.valueType()));
+                updated.add(new Property(p.section(), newKey, p.env(), p.value(), p.valueType(), p.comment()));
             } else {
                 updated.add(p);
             }

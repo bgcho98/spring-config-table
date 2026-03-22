@@ -274,6 +274,9 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
                     .findFirst();
             var value = prop.map(p -> p.isNullValue() ? "null" : p.value()).orElse("");
 
+            var comment = prop.map(Property::comment).orElse("");
+
+            // Value row
             var row = new JPanel(new BorderLayout(8, 0));
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
             row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
@@ -294,13 +297,30 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
             final var envName = env;
             field.addFocusListener(new java.awt.event.FocusAdapter() {
                 @Override public void focusLost(java.awt.event.FocusEvent e) {
-                    onFieldChanged(section, selectedKey, envName, field.getText());
+                    onFieldChanged(section, selectedKey, envName, field.getText(), null);
                 }
             });
             row.add(field, BorderLayout.CENTER);
 
             detailPanel.add(row);
-            detailPanel.add(Box.createVerticalStrut(4));
+
+            // Comment row (smaller, gray, indented)
+            var commentField = new JTextField(comment != null ? comment : "");
+            commentField.setFont(commentField.getFont().deriveFont(Font.ITALIC, 11f));
+            commentField.setForeground(JBColor.GRAY);
+            commentField.putClientProperty("JTextField.placeholderText", "comment...");
+            commentField.addFocusListener(new java.awt.event.FocusAdapter() {
+                @Override public void focusLost(java.awt.event.FocusEvent e) {
+                    onCommentChanged(section, selectedKey, envName, commentField.getText());
+                }
+            });
+            var commentRow = new JPanel(new BorderLayout(8, 0));
+            commentRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+            commentRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+            commentRow.add(Box.createHorizontalStrut(130), BorderLayout.WEST);
+            commentRow.add(commentField, BorderLayout.CENTER);
+            detailPanel.add(commentRow);
+            detailPanel.add(Box.createVerticalStrut(6));
         }
 
         detailPanel.add(Box.createVerticalGlue());
@@ -308,13 +328,29 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
         detailPanel.repaint();
     }
 
-    private void onFieldChanged(String section, String key, String env, String value) {
+    private void onFieldChanged(String section, String key, String env, String value, String comment) {
+        // Preserve existing comment if not explicitly changed
+        var existingComment = allProperties.stream()
+                .filter(p -> p.section().equals(section) && p.key().equals(key) && p.env().equals(env))
+                .findFirst().map(Property::comment).orElse(null);
         allProperties.removeIf(p -> p.section().equals(section) && p.key().equals(key) && p.env().equals(env));
         if (value != null && !value.isEmpty()) {
+            var c = comment != null ? comment : existingComment;
             allProperties.add("null".equals(value)
-                    ? Property.of(section, key, env, null) : Property.of(section, key, env, value));
+                    ? Property.of(section, key, env, null, c) : Property.of(section, key, env, value, c));
         }
         setStatus("Unsaved changes", true);
+    }
+
+    private void onCommentChanged(String section, String key, String env, String comment) {
+        var prop = allProperties.stream()
+                .filter(p -> p.section().equals(section) && p.key().equals(key) && p.env().equals(env))
+                .findFirst().orElse(null);
+        if (prop != null) {
+            allProperties.remove(prop);
+            allProperties.add(prop.withComment(comment.isBlank() ? null : comment));
+            setStatus("Unsaved changes", true);
+        }
     }
 
     // === Actions ===
@@ -345,7 +381,7 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
         var updated = new ArrayList<Property>();
         for (var p : allProperties) {
             updated.add(p.section().equals(section) && p.key().equals(selectedKey)
-                    ? new Property(p.section(), newKey.trim(), p.env(), p.value(), p.valueType()) : p);
+                    ? new Property(p.section(), newKey.trim(), p.env(), p.value(), p.valueType(), p.comment()) : p);
         }
         allProperties = updated;
         onSectionChanged();
@@ -370,7 +406,7 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
         if (name == null || name.isBlank() || name.equals(old)) return;
         var updated = new ArrayList<Property>();
         for (var p : allProperties)
-            updated.add(p.section().equals(old) ? new Property(name.trim(), p.key(), p.env(), p.value(), p.valueType()) : p);
+            updated.add(p.section().equals(old) ? new Property(name.trim(), p.key(), p.env(), p.value(), p.valueType(), p.comment()) : p);
         allProperties = updated;
         sections.replaceAll(s -> s.equals(old) ? name.trim() : s);
         updateSectionCombo();

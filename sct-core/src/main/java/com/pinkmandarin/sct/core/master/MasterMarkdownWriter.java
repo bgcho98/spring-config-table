@@ -150,6 +150,16 @@ public class MasterMarkdownWriter {
     }
 
     private String formatValue(Property prop) {
+        var result = formatRawValue(prop);
+        // Append HTML comment if property has a comment
+        if (prop.hasComment()) {
+            var escapedComment = prop.comment().replace("--", "—"); // -- not allowed in HTML comments
+            result = result + " <!-- " + escapedComment + " -->";
+        }
+        return result;
+    }
+
+    private String formatRawValue(Property prop) {
         if (prop.isNullValue()) {
             return "null";
         }

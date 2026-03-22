@@ -83,23 +83,38 @@ public class MasterMarkdownParser {
             envNames.add(envName);
 
             for (int i = 0; i < columnKeys.size() && i + 1 < cells.size(); i++) {
-                var cellValue = cells.get(i + 1);
-                if (cellValue.isEmpty()) continue; // empty cell = inherit default
+                var cellRaw = cells.get(i + 1);
+                if (cellRaw.isEmpty()) continue; // empty cell = inherit default
 
                 var columnKey = columnKeys.get(i);
                 var fullKey = currentPrefix.isEmpty() ? columnKey : currentPrefix + "." + columnKey;
 
+                // Extract HTML comment <!-- ... -->
+                String comment = null;
+                var cellValue = cellRaw;
+                var commentStart = cellRaw.indexOf("<!--");
+                if (commentStart >= 0) {
+                    var commentEnd = cellRaw.indexOf("-->", commentStart + 4);
+                    if (commentEnd >= 0) {
+                        comment = cellRaw.substring(commentStart + 4, commentEnd).trim();
+                        cellValue = (cellRaw.substring(0, commentStart) + cellRaw.substring(commentEnd + 3)).trim();
+                    }
+                }
+                if (cellValue.isEmpty() && comment == null) continue;
+
                 if ("null".equals(cellValue)) {
-                    properties.add(Property.of(currentSection, fullKey, envName, null));
+                    properties.add(Property.of(currentSection, fullKey, envName, null, comment));
                 } else if (cellValue.startsWith("\"") && cellValue.endsWith("\"") && cellValue.length() >= 2) {
-                    // Quoted string — strip quotes, unescape \" then general escapes
                     var inner = cellValue.substring(1, cellValue.length() - 1);
                     inner = inner.replace("\\\"", "\"");
                     inner = unescapeCellValue(inner);
-                    properties.add(Property.of(currentSection, fullKey, envName, inner));
+                    properties.add(Property.of(currentSection, fullKey, envName, inner, comment));
+                } else if (cellValue.isEmpty()) {
+                    // Only comment, no value — create property with empty string to carry comment
+                    properties.add(Property.of(currentSection, fullKey, envName, "", comment));
                 } else {
                     cellValue = unescapeCellValue(cellValue);
-                    properties.add(Property.of(currentSection, fullKey, envName, detectAndCast(cellValue)));
+                    properties.add(Property.of(currentSection, fullKey, envName, detectAndCast(cellValue), comment));
                 }
             }
         }
