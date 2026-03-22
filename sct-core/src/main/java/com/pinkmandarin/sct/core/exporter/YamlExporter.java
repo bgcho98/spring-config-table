@@ -42,7 +42,55 @@ public class YamlExporter {
             addProfileActivation(nested, envName);
         }
 
-        return dumpYaml(nested);
+        var yaml = dumpYaml(nested);
+
+        // Insert inline comments from properties
+        yaml = insertComments(yaml, properties);
+
+        return yaml;
+    }
+
+    /**
+     * Post-processes YAML output to insert inline # comments.
+     * Matches each property's last key segment to YAML lines and appends the comment.
+     */
+    private String insertComments(String yaml, List<Property> properties) {
+        // Build map: last key segment → comment
+        var commentMap = new LinkedHashMap<String, String>();
+        for (var prop : properties) {
+            if (prop.hasComment()) {
+                var lastSegment = prop.key();
+                var dotIdx = lastSegment.lastIndexOf('.');
+                if (dotIdx >= 0) lastSegment = lastSegment.substring(dotIdx + 1);
+                // Remove array index
+                lastSegment = lastSegment.replaceAll("\\[\\d+]", "");
+                commentMap.putIfAbsent(lastSegment, prop.comment());
+            }
+        }
+
+        if (commentMap.isEmpty()) return yaml;
+
+        var lines = yaml.split("\n", -1);
+        var sb = new StringBuilder();
+        for (var line : lines) {
+            sb.append(line);
+            // Check if this line has a key: value pattern
+            var trimmed = line.trim();
+            var colonIdx = trimmed.indexOf(':');
+            if (colonIdx > 0 && !trimmed.startsWith("#") && !trimmed.startsWith("-")) {
+                var key = trimmed.substring(0, colonIdx).trim();
+                var comment = commentMap.get(key);
+                if (comment != null && trimmed.length() > colonIdx + 1) {
+                    // Only add comment if line has a value (not just a key with nested block)
+                    var afterColon = trimmed.substring(colonIdx + 1).trim();
+                    if (!afterColon.isEmpty()) {
+                        sb.append(" # ").append(comment);
+                    }
+                }
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 
     @SuppressWarnings("unchecked")
