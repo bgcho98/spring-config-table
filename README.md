@@ -131,9 +131,9 @@ Open a `master-config.md` file and click the **Table** tab at the bottom of the 
 Configure two sort orders in Settings:
 
 - **Lifecycle order**: `default, local, dev, alpha, beta, beta-dr, real, release, dr`
-- **Region order**: `gov, ncgn, ngcc, ngsc, ninc, ngovc, ngoic`
+- **Region order**: Configure your region/datacenter prefixes (e.g., `us, eu, ap`)
 
-Result: base group → gov group → ncgn group → ..., with lifecycle order applied within each group.
+Result: base group first, then each region group in order, with lifecycle order applied within each group.
 
 ## Escape Rules
 
