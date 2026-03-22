@@ -6,16 +6,18 @@ import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.wm.ToolWindow;
+import com.intellij.openapi.wm.ToolWindowAnchor;
+import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.ui.SearchTextField;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.table.JBTable;
 import com.pinkmandarin.sct.core.importer.YamlImporter;
 import com.pinkmandarin.sct.core.master.MasterMarkdownParser;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -32,13 +34,19 @@ import java.util.*;
 import java.util.List;
 
 /**
- * Shows a table view of selected YAML files with property/value/profile filtering.
- * Double-click a row to navigate to the property in the source YAML file.
+ * Shows a table view of selected YAML/Markdown files in a Tool Window.
+ * Non-modal — editor remains fully interactive.
+ * Double-click a row to navigate to the property in the source file.
  */
 public class YamlLensAction extends AnAction {
 
+    private static final String TOOL_WINDOW_ID = "YAML Lens";
+
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
+        var project = e.getProject();
+        if (project == null) return;
+
         var yamlFiles = YamlFileCollector.collect(e);
         if (yamlFiles.isEmpty()) return;
 
@@ -47,12 +55,96 @@ public class YamlLensAction extends AnAction {
                 (a, b) -> "default".equals(a) ? -1 : "default".equals(b) ? 1 : a.compareTo(b)
         ).toList();
 
-        new YamlLensDialog(e.getProject(), rows, profiles).show();
+        showToolWindow(project, rows, profiles);
     }
 
     @Override
     public void update(@NotNull AnActionEvent e) {
         e.getPresentation().setEnabledAndVisible(true);
+    }
+
+    private void showToolWindow(Project project, List<PropertyRow> rows, List<String> profiles) {
+        var twm = ToolWindowManager.getInstance(project);
+        var toolWindow = twm.getToolWindow(TOOL_WINDOW_ID);
+
+        if (toolWindow == null) {
+            toolWindow = twm.registerToolWindow(TOOL_WINDOW_ID, true, ToolWindowAnchor.BOTTOM);
+        }
+
+        var panel = buildPanel(project, rows, profiles);
+
+        var contentManager = toolWindow.getContentManager();
+        contentManager.removeAllContents(true);
+        var content = ContentFactory.getInstance().createContent(panel, SctBundle.message("yamllens.title"), false);
+        contentManager.addContent(content);
+
+        toolWindow.show();
+    }
+
+    private JPanel buildPanel(Project project, List<PropertyRow> rows, List<String> profiles) {
+        var tableModel = new LensTableModel(rows);
+        var table = new JBTable(tableModel);
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        table.getColumnModel().getColumn(0).setPreferredWidth(350);
+        table.getColumnModel().getColumn(1).setPreferredWidth(120);
+        table.getColumnModel().getColumn(2).setPreferredWidth(500);
+
+        var sorter = new TableRowSorter<>(tableModel);
+        sorter.setComparator(0, NaturalOrderComparator.INSTANCE);
+        table.setRowSorter(sorter);
+
+        // Double-click to navigate to source
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    var viewRow = table.getSelectedRow();
+                    if (viewRow < 0) return;
+                    var modelRow = table.convertRowIndexToModel(viewRow);
+                    var row = tableModel.rows.get(modelRow);
+                    navigateToProperty(project, row);
+                }
+            }
+        });
+
+        var propertyFilter = new SearchTextField(false);
+        var valueFilter = new SearchTextField(false);
+        var profileCombo = new JComboBox<>(buildProfileOptions(profiles));
+
+        propertyFilter.addDocumentListener(new com.intellij.ui.DocumentAdapter() {
+            @Override
+            protected void textChanged(@NotNull javax.swing.event.DocumentEvent e) {
+                applyFilter(sorter, propertyFilter.getText(), valueFilter.getText(),
+                        (String) profileCombo.getSelectedItem());
+            }
+        });
+        valueFilter.addDocumentListener(new com.intellij.ui.DocumentAdapter() {
+            @Override
+            protected void textChanged(@NotNull javax.swing.event.DocumentEvent e) {
+                applyFilter(sorter, propertyFilter.getText(), valueFilter.getText(),
+                        (String) profileCombo.getSelectedItem());
+            }
+        });
+        profileCombo.addActionListener(e -> applyFilter(sorter,
+                propertyFilter.getText(), valueFilter.getText(),
+                (String) profileCombo.getSelectedItem()));
+
+        var exportCsvBtn = new JButton(SctBundle.message("yamllens.exportCsv"));
+        exportCsvBtn.addActionListener(e -> exportCsv(table, tableModel));
+
+        var toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
+        toolbar.add(exportCsvBtn);
+        toolbar.add(new JLabel(SctBundle.message("yamllens.propertyFilter")));
+        toolbar.add(propertyFilter);
+        toolbar.add(new JLabel(SctBundle.message("yamllens.valueFilter")));
+        toolbar.add(valueFilter);
+        toolbar.add(new JLabel(SctBundle.message("yamllens.profile")));
+        toolbar.add(profileCombo);
+
+        var panel = new JPanel(new BorderLayout());
+        panel.add(toolbar, BorderLayout.NORTH);
+        panel.add(new JBScrollPane(table), BorderLayout.CENTER);
+        return panel;
     }
 
     private List<PropertyRow> buildRows(VirtualFile[] files) {
@@ -86,190 +178,92 @@ public class YamlLensAction extends AnAction {
         return rows;
     }
 
-    record PropertyRow(String property, String profile, String value, String filePath) {}
+    private static void navigateToProperty(Project project, PropertyRow row) {
+        var vf = LocalFileSystem.getInstance().findFileByPath(row.filePath);
+        if (vf == null) return;
 
-    private static class YamlLensDialog extends DialogWrapper {
+        var searchKey = extractLastKeySegment(row.property);
+        int line = findLineInFile(vf, searchKey);
 
-        private final Project project;
-        private final List<PropertyRow> allRows;
-        private final List<String> profiles;
-        private JBTable table;
-        private LensTableModel tableModel;
-
-        YamlLensDialog(@Nullable Project project, List<PropertyRow> rows, List<String> profiles) {
-            super(project, true);
-            this.project = project;
-            this.allRows = rows;
-            this.profiles = profiles;
-            setTitle(SctBundle.message("yamllens.title"));
-            setSize(1100, 700);
-            init();
-        }
-
-        @Override
-        protected @Nullable JComponent createCenterPanel() {
-            tableModel = new LensTableModel(allRows);
-            table = new JBTable(tableModel);
-            table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
-            table.getColumnModel().getColumn(0).setPreferredWidth(350);
-            table.getColumnModel().getColumn(1).setPreferredWidth(120);
-            table.getColumnModel().getColumn(2).setPreferredWidth(500);
-
-            var sorter = new TableRowSorter<>(tableModel);
-            // Natural order sort for Property column
-            sorter.setComparator(0, NaturalOrderComparator.INSTANCE);
-            table.setRowSorter(sorter);
-
-            // Double-click to navigate to YAML source
-            table.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (e.getClickCount() == 2 && project != null) {
-                        var viewRow = table.getSelectedRow();
-                        if (viewRow < 0) return;
-                        var modelRow = table.convertRowIndexToModel(viewRow);
-                        var row = tableModel.rows.get(modelRow);
-                        navigateToProperty(row);
-                    }
-                }
-            });
-
-            var propertyFilter = new SearchTextField(false);
-            propertyFilter.addDocumentListener(new com.intellij.ui.DocumentAdapter() {
-                @Override
-                protected void textChanged(@NotNull javax.swing.event.DocumentEvent e) {
-                    applyFilter(sorter, propertyFilter.getText(), null, null);
-                }
-            });
-
-            var valueFilter = new SearchTextField(false);
-            valueFilter.addDocumentListener(new com.intellij.ui.DocumentAdapter() {
-                @Override
-                protected void textChanged(@NotNull javax.swing.event.DocumentEvent e) {
-                    applyFilter(sorter, propertyFilter.getText(), valueFilter.getText(), null);
-                }
-            });
-
-            var profileCombo = new JComboBox<>(buildProfileOptions());
-            profileCombo.addActionListener(e -> applyFilter(sorter,
-                    propertyFilter.getText(), valueFilter.getText(),
-                    (String) profileCombo.getSelectedItem()));
-
-            var exportCsvBtn = new JButton(SctBundle.message("yamllens.exportCsv"));
-            exportCsvBtn.addActionListener(e -> exportCsv());
-
-            var toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
-            toolbar.add(exportCsvBtn);
-            toolbar.add(new JLabel(SctBundle.message("yamllens.propertyFilter")));
-            toolbar.add(propertyFilter);
-            toolbar.add(new JLabel(SctBundle.message("yamllens.valueFilter")));
-            toolbar.add(valueFilter);
-            toolbar.add(new JLabel(SctBundle.message("yamllens.profile")));
-            toolbar.add(profileCombo);
-
-            var panel = new JPanel(new BorderLayout());
-            panel.add(toolbar, BorderLayout.NORTH);
-            panel.add(new JBScrollPane(table), BorderLayout.CENTER);
-            return panel;
-        }
-
-        private void navigateToProperty(PropertyRow row) {
-            var vf = LocalFileSystem.getInstance().findFileByPath(row.filePath);
-            if (vf == null || project == null) return;
-
-            // Find the line containing the last segment of the property key
-            var searchKey = extractLastKeySegment(row.property);
-            int line = findLineInFile(vf, searchKey);
-
-            var descriptor = new OpenFileDescriptor(project, vf, Math.max(line, 0), 0);
-            var editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, true);
-            if (editor != null && line >= 0) {
-                editor.getCaretModel().moveToOffset(
-                        editor.getDocument().getLineStartOffset(line));
-                editor.getScrollingModel().scrollToCaret(ScrollType.CENTER);
-            }
-        }
-
-        private String extractLastKeySegment(String fullProperty) {
-            // "spring.datasource.url" -> "url"
-            var lastDot = fullProperty.lastIndexOf('.');
-            if (lastDot >= 0) {
-                return fullProperty.substring(lastDot + 1);
-            }
-            return fullProperty;
-        }
-
-        private int findLineInFile(VirtualFile file, String searchKey) {
-            try {
-                var lines = Files.readAllLines(Path.of(file.getPath()), StandardCharsets.UTF_8);
-                // Remove array index for search (servers[0] -> servers)
-                var cleanKey = searchKey.replaceAll("\\[\\d+]", "");
-                for (int i = 0; i < lines.size(); i++) {
-                    var trimmed = lines.get(i).trim();
-                    if (trimmed.startsWith(cleanKey + ":") || trimmed.startsWith(cleanKey + " :")) {
-                        return i;
-                    }
-                }
-            } catch (IOException ignored) {}
-            return 0;
-        }
-
-        @Override
-        protected Action @NotNull [] createActions() {
-            return new Action[]{getOKAction()};
-        }
-
-        private String[] buildProfileOptions() {
-            var options = new ArrayList<String>();
-            options.add("");
-            options.addAll(profiles);
-            return options.toArray(String[]::new);
-        }
-
-        private void applyFilter(TableRowSorter<LensTableModel> sorter,
-                                 String propText, String valText, String profile) {
-            var filters = new ArrayList<RowFilter<LensTableModel, Integer>>();
-            if (propText != null && !propText.isBlank()) {
-                filters.add(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(propText), 0));
-            }
-            if (valText != null && !valText.isBlank()) {
-                filters.add(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(valText), 2));
-            }
-            if (profile != null && !profile.isBlank()) {
-                filters.add(RowFilter.regexFilter("^" + java.util.regex.Pattern.quote(profile) + "$", 1));
-            }
-            sorter.setRowFilter(filters.isEmpty() ? null : RowFilter.andFilter(filters));
-        }
-
-        private void exportCsv() {
-            var chooser = new JFileChooser();
-            chooser.setDialogTitle(SctBundle.message("yamllens.exportCsv"));
-            if (chooser.showSaveDialog(getContentPanel()) != JFileChooser.APPROVE_OPTION) return;
-
-            try (var writer = new FileWriter(chooser.getSelectedFile(), StandardCharsets.UTF_8)) {
-                writer.write('\ufeff'); // BOM
-                writer.write("Property,Profile,Value\n");
-                for (int i = 0; i < table.getRowCount(); i++) {
-                    var row = table.convertRowIndexToModel(i);
-                    writer.write(csvEscape(tableModel.rows.get(row).property));
-                    writer.write(',');
-                    writer.write(csvEscape(tableModel.rows.get(row).profile));
-                    writer.write(',');
-                    writer.write(csvEscape(tableModel.rows.get(row).value));
-                    writer.write('\n');
-                }
-            } catch (IOException ignored) {}
-        }
-
-        private String csvEscape(String value) {
-            if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-                return "\"" + value.replace("\"", "\"\"") + "\"";
-            }
-            return value;
+        var descriptor = new OpenFileDescriptor(project, vf, Math.max(line, 0), 0);
+        var editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, true);
+        if (editor != null && line >= 0) {
+            editor.getCaretModel().moveToOffset(editor.getDocument().getLineStartOffset(line));
+            editor.getScrollingModel().scrollToCaret(ScrollType.CENTER);
         }
     }
 
-    private static class LensTableModel extends AbstractTableModel {
+    private static String extractLastKeySegment(String fullProperty) {
+        var lastDot = fullProperty.lastIndexOf('.');
+        return lastDot >= 0 ? fullProperty.substring(lastDot + 1) : fullProperty;
+    }
+
+    private static int findLineInFile(VirtualFile file, String searchKey) {
+        try {
+            var lines = Files.readAllLines(Path.of(file.getPath()), StandardCharsets.UTF_8);
+            var cleanKey = searchKey.replaceAll("\\[\\d+]", "");
+            for (int i = 0; i < lines.size(); i++) {
+                var trimmed = lines.get(i).trim();
+                if (trimmed.startsWith(cleanKey + ":") || trimmed.startsWith(cleanKey + " :")) {
+                    return i;
+                }
+            }
+        } catch (IOException ignored) {}
+        return 0;
+    }
+
+    private static String[] buildProfileOptions(List<String> profiles) {
+        var options = new ArrayList<String>();
+        options.add("");
+        options.addAll(profiles);
+        return options.toArray(String[]::new);
+    }
+
+    private static void applyFilter(TableRowSorter<LensTableModel> sorter,
+                                    String propText, String valText, String profile) {
+        var filters = new ArrayList<RowFilter<LensTableModel, Integer>>();
+        if (propText != null && !propText.isBlank()) {
+            filters.add(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(propText), 0));
+        }
+        if (valText != null && !valText.isBlank()) {
+            filters.add(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(valText), 2));
+        }
+        if (profile != null && !profile.isBlank()) {
+            filters.add(RowFilter.regexFilter("^" + java.util.regex.Pattern.quote(profile) + "$", 1));
+        }
+        sorter.setRowFilter(filters.isEmpty() ? null : RowFilter.andFilter(filters));
+    }
+
+    private static void exportCsv(JBTable table, LensTableModel tableModel) {
+        var chooser = new JFileChooser();
+        chooser.setDialogTitle(SctBundle.message("yamllens.exportCsv"));
+        if (chooser.showSaveDialog(table) != JFileChooser.APPROVE_OPTION) return;
+
+        try (var writer = new FileWriter(chooser.getSelectedFile(), StandardCharsets.UTF_8)) {
+            writer.write('\ufeff');
+            writer.write("Property,Profile,Value\n");
+            for (int i = 0; i < table.getRowCount(); i++) {
+                var row = table.convertRowIndexToModel(i);
+                writer.write(csvEscape(tableModel.rows.get(row).property));
+                writer.write(',');
+                writer.write(csvEscape(tableModel.rows.get(row).profile));
+                writer.write(',');
+                writer.write(csvEscape(tableModel.rows.get(row).value));
+                writer.write('\n');
+            }
+        } catch (IOException ignored) {}
+    }
+
+    private static String csvEscape(String value) {
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
+    record PropertyRow(String property, String profile, String value, String filePath) {}
+
+    static class LensTableModel extends AbstractTableModel {
         private static final String[] COLUMNS = {"Property", "Profile", "Value"};
         final List<PropertyRow> rows;
 
