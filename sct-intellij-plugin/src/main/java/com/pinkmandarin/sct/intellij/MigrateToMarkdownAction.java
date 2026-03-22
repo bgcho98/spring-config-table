@@ -29,13 +29,11 @@ public class MigrateToMarkdownAction extends AnAction {
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         var project = e.getProject();
-        var files = e.getData(VIRTUAL_FILE_ARRAY);
-        if (project == null || files == null || files.length == 0) return;
+        if (project == null) return;
 
-        var yamlFiles = Arrays.stream(files)
-                .filter(f -> f.getName().endsWith(".yml") || f.getName().endsWith(".yaml"))
-                .toArray(VirtualFile[]::new);
-        if (yamlFiles.length == 0) return;
+        var yamlFileList = YamlFileCollector.collect(e);
+        if (yamlFileList.isEmpty()) return;
+        var yamlFiles = yamlFileList.toArray(VirtualFile[]::new);
 
         // Ask user where to save the Markdown file
         var descriptor = new FileSaverDescriptor(
@@ -103,10 +101,7 @@ public class MigrateToMarkdownAction extends AnAction {
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        var files = e.getData(VIRTUAL_FILE_ARRAY);
-        boolean hasYaml = files != null && Arrays.stream(files)
-                .anyMatch(f -> f.getName().endsWith(".yml") || f.getName().endsWith(".yaml"));
-        e.getPresentation().setEnabledAndVisible(hasYaml);
+        e.getPresentation().setEnabledAndVisible(true);
     }
 
     private static void notify(com.intellij.openapi.project.Project project, String content, NotificationType type) {

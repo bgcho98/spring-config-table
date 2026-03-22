@@ -40,10 +40,12 @@
         <action id="com.pinkmandarin.sct.YamlLens"
                 class="com.pinkmandarin.sct.intellij.YamlLensAction">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="com.pinkmandarin.sct.MigrateToMarkdown"
                 class="com.pinkmandarin.sct.intellij.MigrateToMarkdownAction">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>

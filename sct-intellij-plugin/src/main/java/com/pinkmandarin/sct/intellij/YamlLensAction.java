@@ -2,13 +2,17 @@ package com.pinkmandarin.sct.intellij;
 
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.editor.ScrollType;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.OpenFileDescriptor;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.SearchTextField;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
 import com.pinkmandarin.sct.core.importer.YamlImporter;
-import com.pinkmandarin.sct.core.model.Property;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,33 +20,28 @@ import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
-import java.util.stream.Collectors;
-
-import static com.intellij.openapi.actionSystem.CommonDataKeys.VIRTUAL_FILE_ARRAY;
 
 /**
  * Shows a table view of selected YAML files with property/value/profile filtering.
- * Integrated from YamlLens project, reimplemented with sct-core.
+ * Double-click a row to navigate to the property in the source YAML file.
  */
 public class YamlLensAction extends AnAction {
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-        var files = e.getData(VIRTUAL_FILE_ARRAY);
-        if (files == null || files.length == 0) return;
+        var yamlFiles = YamlFileCollector.collect(e);
+        if (yamlFiles.isEmpty()) return;
 
-        var yamlFiles = Arrays.stream(files)
-                .filter(f -> f.getName().endsWith(".yml") || f.getName().endsWith(".yaml"))
-                .toArray(VirtualFile[]::new);
-        if (yamlFiles.length == 0) return;
-
-        var rows = buildRows(yamlFiles);
+        var rows = buildRows(yamlFiles.toArray(VirtualFile[]::new));
         var profiles = rows.stream().map(r -> r.profile).distinct().sorted(
                 (a, b) -> "default".equals(a) ? -1 : "default".equals(b) ? 1 : a.compareTo(b)
         ).toList();
@@ -52,10 +51,7 @@ public class YamlLensAction extends AnAction {
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        var files = e.getData(VIRTUAL_FILE_ARRAY);
-        boolean hasYaml = files != null && Arrays.stream(files)
-                .anyMatch(f -> f.getName().endsWith(".yml") || f.getName().endsWith(".yaml"));
-        e.getPresentation().setEnabledAndVisible(hasYaml);
+        e.getPresentation().setEnabledAndVisible(true);
     }
 
     private List<PropertyRow> buildRows(VirtualFile[] files) {
@@ -69,27 +65,29 @@ public class YamlLensAction extends AnAction {
                 for (var prop : props) {
                     var fullKey = prop.section() + "." + prop.key();
                     var value = prop.isNullValue() ? "null" : (prop.value() != null ? prop.value() : "");
-                    rows.add(new PropertyRow(fullKey, prop.env(), value));
+                    rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath()));
                 }
             } catch (IOException ignored) {}
         }
 
-        rows.sort(Comparator.comparing((PropertyRow r) -> r.property).thenComparing(r -> r.profile));
+        rows.sort(Comparator.comparing((PropertyRow r) -> r.property, NaturalOrderComparator.INSTANCE)
+                .thenComparing(r -> r.profile));
         return rows;
     }
 
-    record PropertyRow(String property, String profile, String value) {}
+    record PropertyRow(String property, String profile, String value, String filePath) {}
 
     private static class YamlLensDialog extends DialogWrapper {
 
+        private final Project project;
         private final List<PropertyRow> allRows;
         private final List<String> profiles;
         private JBTable table;
         private LensTableModel tableModel;
 
-        YamlLensDialog(@Nullable com.intellij.openapi.project.Project project,
-                       List<PropertyRow> rows, List<String> profiles) {
+        YamlLensDialog(@Nullable Project project, List<PropertyRow> rows, List<String> profiles) {
             super(project, true);
+            this.project = project;
             this.allRows = rows;
             this.profiles = profiles;
             setTitle(SctBundle.message("yamllens.title"));
@@ -107,14 +105,29 @@ public class YamlLensAction extends AnAction {
             table.getColumnModel().getColumn(2).setPreferredWidth(500);
 
             var sorter = new TableRowSorter<>(tableModel);
+            // Natural order sort for Property column
+            sorter.setComparator(0, NaturalOrderComparator.INSTANCE);
             table.setRowSorter(sorter);
+
+            // Double-click to navigate to YAML source
+            table.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (e.getClickCount() == 2 && project != null) {
+                        var viewRow = table.getSelectedRow();
+                        if (viewRow < 0) return;
+                        var modelRow = table.convertRowIndexToModel(viewRow);
+                        var row = tableModel.rows.get(modelRow);
+                        navigateToProperty(row);
+                    }
+                }
+            });
 
             var propertyFilter = new SearchTextField(false);
             propertyFilter.addDocumentListener(new com.intellij.ui.DocumentAdapter() {
                 @Override
                 protected void textChanged(@NotNull javax.swing.event.DocumentEvent e) {
-                    applyFilter(sorter, propertyFilter.getText(),
-                            null, null);
+                    applyFilter(sorter, propertyFilter.getText(), null, null);
                 }
             });
 
@@ -122,8 +135,7 @@ public class YamlLensAction extends AnAction {
             valueFilter.addDocumentListener(new com.intellij.ui.DocumentAdapter() {
                 @Override
                 protected void textChanged(@NotNull javax.swing.event.DocumentEvent e) {
-                    applyFilter(sorter, propertyFilter.getText(),
-                            valueFilter.getText(), null);
+                    applyFilter(sorter, propertyFilter.getText(), valueFilter.getText(), null);
                 }
             });
 
@@ -148,6 +160,47 @@ public class YamlLensAction extends AnAction {
             panel.add(toolbar, BorderLayout.NORTH);
             panel.add(new JBScrollPane(table), BorderLayout.CENTER);
             return panel;
+        }
+
+        private void navigateToProperty(PropertyRow row) {
+            var vf = LocalFileSystem.getInstance().findFileByPath(row.filePath);
+            if (vf == null || project == null) return;
+
+            // Find the line containing the last segment of the property key
+            var searchKey = extractLastKeySegment(row.property);
+            int line = findLineInFile(vf, searchKey);
+
+            var descriptor = new OpenFileDescriptor(project, vf, Math.max(line, 0), 0);
+            var editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, true);
+            if (editor != null && line >= 0) {
+                editor.getCaretModel().moveToOffset(
+                        editor.getDocument().getLineStartOffset(line));
+                editor.getScrollingModel().scrollToCaret(ScrollType.CENTER);
+            }
+        }
+
+        private String extractLastKeySegment(String fullProperty) {
+            // "spring.datasource.url" -> "url"
+            var lastDot = fullProperty.lastIndexOf('.');
+            if (lastDot >= 0) {
+                return fullProperty.substring(lastDot + 1);
+            }
+            return fullProperty;
+        }
+
+        private int findLineInFile(VirtualFile file, String searchKey) {
+            try {
+                var lines = Files.readAllLines(Path.of(file.getPath()), StandardCharsets.UTF_8);
+                // Remove array index for search (servers[0] -> servers)
+                var cleanKey = searchKey.replaceAll("\\[\\d+]", "");
+                for (int i = 0; i < lines.size(); i++) {
+                    var trimmed = lines.get(i).trim();
+                    if (trimmed.startsWith(cleanKey + ":") || trimmed.startsWith(cleanKey + " :")) {
+                        return i;
+                    }
+                }
+            } catch (IOException ignored) {}
+            return 0;
         }
 
         @Override
