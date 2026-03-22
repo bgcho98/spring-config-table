@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Document -->
+  <rect x="2" y="1" width="8" height="11" rx="1" fill="none" stroke="#6B9BD2" stroke-width="1"/>
+  <line x1="4" y1="4" x2="8" y2="4" stroke="#6B9BD2" stroke-width="0.8"/>
+  <line x1="4" y1="6" x2="8" y2="6" stroke="#6B9BD2" stroke-width="0.8"/>
+  <line x1="4" y1="8" x2="7" y2="8" stroke="#6B9BD2" stroke-width="0.8"/>
+  <!-- Arrow -->
+  <path d="M11 7 L14 7 L14 5 L16 8 L14 11 L14 9 L11 9 Z" fill="#59A869"/>
+</svg>

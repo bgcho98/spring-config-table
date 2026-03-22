@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Magnifying glass -->
+  <circle cx="7" cy="7" r="4.5" fill="none" stroke="#6B9BD2" stroke-width="1.2"/>
+  <line x1="10.2" y1="10.2" x2="14" y2="14" stroke="#6B9BD2" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Table lines inside lens -->
+  <line x1="4.5" y1="6" x2="9.5" y2="6" stroke="#3574A5" stroke-width="0.6"/>
+  <line x1="4.5" y1="8" x2="9.5" y2="8" stroke="#3574A5" stroke-width="0.6"/>
+  <line x1="7" y1="4.5" x2="7" y2="9.5" stroke="#3574A5" stroke-width="0.6"/>
+</svg>

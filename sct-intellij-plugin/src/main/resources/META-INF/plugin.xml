@@ -34,16 +34,19 @@
 
     <actions>
         <action id="com.pinkmandarin.sct.GenerateYaml"
-                class="com.pinkmandarin.sct.intellij.GenerateYamlAction">
+                class="com.pinkmandarin.sct.intellij.GenerateYamlAction"
+                icon="/icons/generate.svg">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
         <action id="com.pinkmandarin.sct.YamlLens"
-                class="com.pinkmandarin.sct.intellij.YamlLensAction">
+                class="com.pinkmandarin.sct.intellij.YamlLensAction"
+                icon="/icons/yamlLens.svg">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="com.pinkmandarin.sct.MigrateToMarkdown"
-                class="com.pinkmandarin.sct.intellij.MigrateToMarkdownAction">
+                class="com.pinkmandarin.sct.intellij.MigrateToMarkdownAction"
+                icon="/icons/migrate.svg">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
