@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -31,7 +32,7 @@ public final class SctFileWatcher {
         cachedMasterPaths = SctSettings.getInstance(project).getMappings().stream()
                 .filter(m -> m.masterFile != null && !m.masterFile.isBlank())
                 .map(m -> normalizePath(Path.of(basePath, m.masterFile)))
-                .collect(Collectors.toSet());
+                .collect(Collectors.collectingAndThen(Collectors.toSet(), Collections::unmodifiableSet));
     }
 
     public Set<String> getMasterPaths() {

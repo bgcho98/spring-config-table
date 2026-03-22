@@ -44,18 +44,22 @@ public class SctStartupActivity implements ProjectActivity {
                 if (!SctSettings.getInstance(project).isAutoGenerate()) return;
 
                 var masterPaths = SctFileWatcher.getInstance(project).getMasterPaths();
-                boolean matched = false;
+                var matchedPaths = new java.util.LinkedHashSet<String>();
 
                 for (var event : events) {
                     String filePath = resolveFilePath(event);
                     if (filePath != null && masterPaths.contains(filePath)) {
-                        matched = true;
+                        matchedPaths.add(filePath);
                     }
                 }
 
-                if (matched) {
+                if (!matchedPaths.isEmpty()) {
                     alarm.cancelAllRequests();
-                    alarm.addRequest(() -> SctGenerator.generateAll(project), DEBOUNCE_MS);
+                    alarm.addRequest(() -> {
+                        for (var path : matchedPaths) {
+                            SctGenerator.generateByFilePath(project, path);
+                        }
+                    }, DEBOUNCE_MS);
                 }
             }
         });

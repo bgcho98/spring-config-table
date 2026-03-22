@@ -20,17 +20,31 @@ final class NaturalOrderComparator implements Comparator<String> {
             var cb = b.charAt(bi);
 
             if (Character.isDigit(ca) && Character.isDigit(cb)) {
-                // Compare numeric chunks
-                int numA = 0, numB = 0;
+                // Compare numeric chunks as long to avoid overflow
+                long numA = 0, numB = 0;
+                int lenA = 0, lenB = 0;
                 while (ai < a.length() && Character.isDigit(a.charAt(ai))) {
                     numA = numA * 10 + (a.charAt(ai) - '0');
-                    ai++;
+                    ai++; lenA++;
+                    if (lenA > 18) { // overflow guard: fall back to length comparison
+                        while (ai < a.length() && Character.isDigit(a.charAt(ai))) { ai++; lenA++; }
+                        break;
+                    }
                 }
                 while (bi < b.length() && Character.isDigit(b.charAt(bi))) {
                     numB = numB * 10 + (b.charAt(bi) - '0');
-                    bi++;
+                    bi++; lenB++;
+                    if (lenB > 18) {
+                        while (bi < b.length() && Character.isDigit(b.charAt(bi))) { bi++; lenB++; }
+                        break;
+                    }
                 }
-                if (numA != numB) return Integer.compare(numA, numB);
+                if (lenA > 18 || lenB > 18) {
+                    // Very large numbers: compare by length first, then lexicographic
+                    if (lenA != lenB) return Integer.compare(lenA, lenB);
+                } else {
+                    if (numA != numB) return Long.compare(numA, numB);
+                }
             } else {
                 var cmp = Character.compare(Character.toLowerCase(ca), Character.toLowerCase(cb));
                 if (cmp != 0) return cmp;

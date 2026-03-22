@@ -181,7 +181,10 @@ public class MasterMarkdownParser {
         } catch (NumberFormatException ignored) {}
         if (value.contains(".")) {
             try {
-                return Double.parseDouble(value);
+                double d = Double.parseDouble(value);
+                if (!Double.isNaN(d) && !Double.isInfinite(d)) {
+                    return d;
+                }
             } catch (NumberFormatException ignored) {}
         }
         return value;

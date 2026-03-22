@@ -33,7 +33,7 @@ public final class SctSettings implements PersistentStateComponent<SctSettings.S
     }
 
     public List<ModuleMapping> getMappings() {
-        return state.mappings;
+        return List.copyOf(state.mappings);
     }
 
     public void setMappings(List<ModuleMapping> mappings) {

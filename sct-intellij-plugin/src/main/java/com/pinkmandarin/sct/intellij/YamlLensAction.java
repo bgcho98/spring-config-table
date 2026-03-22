@@ -83,7 +83,10 @@ public class YamlLensAction extends AnAction {
                         rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath()));
                     }
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ex) {
+                    com.intellij.openapi.diagnostic.Logger.getInstance(YamlLensAction.class)
+                            .warn("Failed to parse: " + file.getPath(), ex);
+                }
         }
 
         rows.sort(Comparator.comparing((PropertyRow r) -> r.property, NaturalOrderComparator.INSTANCE)
@@ -222,7 +225,10 @@ public class YamlLensAction extends AnAction {
                     writer.write(csvEscape(tableModel.rows.get(row).value));
                     writer.write('\n');
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ex) {
+                com.intellij.openapi.diagnostic.Logger.getInstance(YamlLensAction.class)
+                        .warn("CSV export failed", ex);
+            }
         }
 
         private String csvEscape(String value) {
@@ -263,7 +269,10 @@ public class YamlLensAction extends AnAction {
                     return i;
                 }
             }
-        } catch (IOException ignored) {}
+        } catch (IOException ex) {
+            com.intellij.openapi.diagnostic.Logger.getInstance(YamlLensAction.class)
+                    .warn("Failed to read: " + file.getPath(), ex);
+        }
         return 0;
     }
 

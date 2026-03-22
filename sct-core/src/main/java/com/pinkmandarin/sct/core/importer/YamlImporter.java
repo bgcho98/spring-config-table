@@ -28,11 +28,15 @@ public class YamlImporter {
                     .sorted()
                     .toList();
         }
+        return importFiles(yamlFiles);
+    }
 
+    public ParseResult importFiles(List<Path> yamlFiles) throws IOException {
         var envs = new ArrayList<Environment>();
         var allProperties = new ArrayList<Property>();
         var defaultProperties = new HashMap<String, Property>();
 
+        // Separate default and profile files, default first
         Path defaultFile = null;
         var profileFiles = new ArrayList<Path>();
 
@@ -54,7 +58,7 @@ public class YamlImporter {
             }
         }
 
-        // Step 2: parse profile files, removing values identical to default
+        // Profile files — remove values identical to default
         for (var file : profileFiles) {
             var envName = extractEnvName(file);
             envs.add(new Environment(envName));
