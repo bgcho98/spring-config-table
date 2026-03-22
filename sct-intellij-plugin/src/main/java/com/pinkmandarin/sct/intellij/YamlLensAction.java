@@ -13,6 +13,7 @@ import com.intellij.ui.SearchTextField;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
 import com.pinkmandarin.sct.core.importer.YamlImporter;
+import com.pinkmandarin.sct.core.master.MasterMarkdownParser;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -57,15 +58,25 @@ public class YamlLensAction extends AnAction {
     private List<PropertyRow> buildRows(VirtualFile[] files) {
         var rows = new ArrayList<PropertyRow>();
         var importer = new YamlImporter();
+        var mdParser = new MasterMarkdownParser();
 
         for (var file : files) {
             try {
-                var envName = YamlImporter.extractEnvName(Path.of(file.getName()));
-                var props = importer.parseFile(Path.of(file.getPath()), envName);
-                for (var prop : props) {
-                    var fullKey = prop.section() + "." + prop.key();
-                    var value = prop.isNullValue() ? "null" : (prop.value() != null ? prop.value() : "");
-                    rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath()));
+                if (YamlFileCollector.isMarkdown(file)) {
+                    var result = mdParser.parse(Path.of(file.getPath()));
+                    for (var prop : result.properties()) {
+                        var fullKey = prop.section() + "." + prop.key();
+                        var value = prop.isNullValue() ? "null" : (prop.value() != null ? prop.value() : "");
+                        rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath()));
+                    }
+                } else {
+                    var envName = YamlImporter.extractEnvName(Path.of(file.getName()));
+                    var props = importer.parseFile(Path.of(file.getPath()), envName);
+                    for (var prop : props) {
+                        var fullKey = prop.section() + "." + prop.key();
+                        var value = prop.isNullValue() ? "null" : (prop.value() != null ? prop.value() : "");
+                        rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath()));
+                    }
                 }
             } catch (IOException ignored) {}
         }

@@ -31,7 +31,9 @@ public class MigrateToMarkdownAction extends AnAction {
         var project = e.getProject();
         if (project == null) return;
 
-        var yamlFileList = YamlFileCollector.collect(e);
+        var yamlFileList = YamlFileCollector.collect(e).stream()
+                .filter(YamlFileCollector::isYaml)
+                .toList();
         if (yamlFileList.isEmpty()) return;
         var yamlFiles = yamlFileList.toArray(VirtualFile[]::new);
 
