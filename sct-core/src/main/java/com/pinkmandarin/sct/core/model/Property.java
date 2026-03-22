@@ -23,6 +23,36 @@ public record Property(
         return new Property(section, key, env, String.valueOf(rawValue), valueType, comment);
     }
 
+    /**
+     * Create a Property by parsing a string value and detecting its type.
+     * Used by editors where user input is always a String.
+     * "true"/"false" → bool, "42" → int, "3.14" → float, else → string.
+     */
+    public static Property ofParsed(String section, String key, String env, String strValue, String comment) {
+        if (strValue == null || strValue.isEmpty()) {
+            return new Property(section, key, env, "", "string", comment);
+        }
+        if ("null".equals(strValue)) {
+            return new Property(section, key, env, NULL_VALUE, "null", comment);
+        }
+        if ("true".equals(strValue) || "false".equals(strValue)) {
+            return new Property(section, key, env, strValue, "bool", comment);
+        }
+        try {
+            long l = Long.parseLong(strValue);
+            return new Property(section, key, env, strValue, "int", comment);
+        } catch (NumberFormatException ignored) {}
+        if (strValue.contains(".")) {
+            try {
+                double d = Double.parseDouble(strValue);
+                if (!Double.isNaN(d) && !Double.isInfinite(d)) {
+                    return new Property(section, key, env, strValue, "float", comment);
+                }
+            } catch (NumberFormatException ignored) {}
+        }
+        return new Property(section, key, env, strValue, "string", comment);
+    }
+
     public Property withComment(String comment) {
         return new Property(section, key, env, value, valueType, comment);
     }

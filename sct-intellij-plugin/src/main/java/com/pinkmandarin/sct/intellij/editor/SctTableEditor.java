@@ -223,7 +223,7 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
 
         allProperties.removeIf(p -> p.section().equals(section) && p.key().equals(key) && p.env().equals(env));
         if (!value.isEmpty()) {
-            allProperties.add("null".equals(value) ? Property.of(section, key, env, null) : Property.of(section, key, env, value));
+            allProperties.add(Property.ofParsed(section, key, env, value, null));
         }
     }
 

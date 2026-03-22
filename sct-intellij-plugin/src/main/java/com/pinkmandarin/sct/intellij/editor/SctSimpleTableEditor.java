@@ -335,8 +335,8 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
         allProperties.removeIf(p -> p.section().equals(section) && p.key().equals(key) && p.env().equals(env));
         if (value != null && !value.isEmpty()) {
             var c = comment != null ? comment : existingComment;
-            allProperties.add("null".equals(value)
-                    ? Property.of(section, key, env, null, c) : Property.of(section, key, env, value, c));
+            // Use ofParsed to detect type from string: "false" → bool, "42" → int
+            allProperties.add(Property.ofParsed(section, key, env, value, c));
         }
         setStatus("Unsaved changes", true);
     }
