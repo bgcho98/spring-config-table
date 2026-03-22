@@ -48,15 +48,6 @@ public class SctEditorProvider implements FileEditorProvider, DumbAware {
 
     @Override
     public @NotNull FileEditor createEditor(@NotNull Project project, @NotNull VirtualFile file) {
-        if (JBCefApp.isSupported()) {
-            try {
-                return new SctTableEditor(project, file);
-            } catch (Exception e) {
-                LOG.warn("JCEF editor failed, falling back to simple editor", e);
-            }
-        } else {
-            LOG.info("JCEF not supported, using simple table editor");
-        }
         return new SctSimpleTableEditor(project, file);
     }
 
