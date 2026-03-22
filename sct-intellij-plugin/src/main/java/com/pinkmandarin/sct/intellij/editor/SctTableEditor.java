@@ -148,8 +148,13 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
 
         tableModel.setData(environments, keys, data, types, section);
 
+        // Set column widths and header tooltips from Spring metadata
+        var meta = SpringMetadataService.getInstance(project);
+        var headerRenderer = new ColumnHeaderRenderer(meta, section);
         for (int i = 0; i < table.getColumnCount(); i++) {
-            table.getColumnModel().getColumn(i).setPreferredWidth(i == 0 ? 120 : 180);
+            var column = table.getColumnModel().getColumn(i);
+            column.setPreferredWidth(i == 0 ? 120 : 180);
+            column.setHeaderRenderer(headerRenderer);
         }
 
         updateStatus();
@@ -207,16 +212,37 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         var section = (String) sectionCombo.getSelectedItem();
         if (section == null) return;
 
-        // Suggest existing keys from other sections for auto-complete
+        // Combine Spring metadata properties + existing keys for suggestions
+        var meta = SpringMetadataService.getInstance(project);
+        var springKeys = meta.suggestProperties(section + ".");
         var existingKeys = allProperties.stream()
-                .map(Property::key)
+                .map(p -> p.section() + "." + p.key())
                 .distinct()
                 .sorted()
-                .toArray(String[]::new);
+                .toList();
 
-        var combo = new JComboBox<>(existingKeys);
+        var allSuggestions = new LinkedHashSet<String>();
+        // Spring metadata keys with section prefix stripped
+        for (var sk : springKeys) {
+            if (sk.startsWith(section + ".")) {
+                allSuggestions.add(sk.substring(section.length() + 1));
+            }
+        }
+        // Existing keys from all sections
+        for (var ek : existingKeys) {
+            if (ek.startsWith(section + ".")) {
+                allSuggestions.add(ek.substring(section.length() + 1));
+            }
+        }
+
+        var combo = new JComboBox<>(allSuggestions.toArray(String[]::new));
         combo.setEditable(true);
-        var result = JOptionPane.showConfirmDialog(mainPanel, combo, "New property key", JOptionPane.OK_CANCEL_OPTION);
+
+        var panel = new JPanel(new BorderLayout(5, 5));
+        panel.add(new JLabel("Property key (relative to " + section + "):"), BorderLayout.NORTH);
+        panel.add(combo, BorderLayout.CENTER);
+
+        var result = JOptionPane.showConfirmDialog(mainPanel, panel, "Add Column", JOptionPane.OK_CANCEL_OPTION);
         if (result != JOptionPane.OK_OPTION) return;
 
         var key = ((String) combo.getSelectedItem());
@@ -413,10 +439,69 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
                 c.setBackground(JBColor.namedColor("SCT.typeMismatch", new Color(255, 245, 200)));
                 setToolTipText("Type mismatch: expected " + defaultType + ", got " + cellType);
             } else {
-                setToolTipText(cellType != null ? "type: " + cellType : null);
+                // Spring metadata tooltip
+                var key = tableModel.section + "." + tableModel.keys.get(col - 1);
+                var meta = SpringMetadataService.getInstance(project).getProperty(key);
+                if (meta != null) {
+                    var tip = meta.displayType();
+                    if (meta.description() != null) tip += " — " + meta.description();
+                    if (meta.defaultValue() != null) tip += " (default: " + meta.defaultValue() + ")";
+                    setToolTipText(tip);
+                } else {
+                    setToolTipText(cellType != null ? "type: " + cellType : null);
+                }
             }
 
             c.setForeground(JBColor.foreground());
+            return c;
+        }
+    }
+
+    // --- Column Header Renderer (unknown property = yellow) ---
+
+    private static class ColumnHeaderRenderer extends DefaultTableCellRenderer {
+        private final SpringMetadataService meta;
+        private final String section;
+
+        ColumnHeaderRenderer(SpringMetadataService meta, String section) {
+            this.meta = meta;
+            this.section = section;
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus, int row, int col) {
+            var c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, col);
+            setBorder(UIManager.getBorder("TableHeader.cellBorder"));
+            setHorizontalAlignment(CENTER);
+
+            if (col == 0) {
+                c.setBackground(UIManager.getColor("TableHeader.background"));
+                setToolTipText(null);
+                return c;
+            }
+
+            var fullKey = section + "." + value;
+            var prop = meta.getProperty(fullKey);
+            if (prop != null) {
+                // Known Spring property
+                c.setBackground(UIManager.getColor("TableHeader.background"));
+                var tip = "<html><b>" + fullKey + "</b> (" + prop.displayType() + ")";
+                if (prop.description() != null) tip += "<br>" + prop.description();
+                if (prop.defaultValue() != null) tip += "<br>Default: " + prop.defaultValue();
+                tip += "</html>";
+                setToolTipText(tip);
+            } else if (fullKey.startsWith("spring.") || fullKey.startsWith("server.")
+                    || fullKey.startsWith("management.") || fullKey.startsWith("logging.")) {
+                // Likely Spring property but not in metadata — yellow warning
+                c.setBackground(JBColor.namedColor("SCT.unknownProperty", new Color(255, 250, 205)));
+                setToolTipText("Unknown Spring property: " + fullKey);
+            } else {
+                // Custom application property — no warning
+                c.setBackground(UIManager.getColor("TableHeader.background"));
+                setToolTipText(fullKey);
+            }
+
             return c;
         }
     }
@@ -432,24 +517,33 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         @Override
         public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int col) {
             var field = (JTextField) super.getTableCellEditorComponent(table, value, isSelected, row, col);
-
             if (col <= 0) return field;
 
-            // Collect values from other environments for the same key
             var key = tableModel.keys.get(col - 1);
             var section = tableModel.section;
-            var suggestions = allProperties.stream()
-                    .filter(p -> p.section().equals(section) && p.key().equals(key))
-                    .map(p -> p.isNullValue() ? "null" : p.value())
-                    .filter(v -> v != null && !v.isEmpty())
-                    .distinct()
-                    .sorted()
-                    .toList();
+            var fullKey = section + "." + key;
 
-            if (!suggestions.isEmpty()) {
-                // Show tooltip with suggestions
-                var tip = "Other values: " + String.join(", ", suggestions);
-                field.setToolTipText(tip);
+            // Build tooltip with Spring metadata + other environment values
+            var tips = new ArrayList<String>();
+
+            var meta = SpringMetadataService.getInstance(project).getProperty(fullKey);
+            if (meta != null) {
+                tips.add("Type: " + meta.displayType());
+                if (meta.defaultValue() != null) tips.add("Default: " + meta.defaultValue());
+                if (meta.description() != null) tips.add(meta.description());
+            }
+
+            var otherValues = allProperties.stream()
+                    .filter(p -> p.section().equals(section) && p.key().equals(key))
+                    .map(p -> p.env() + "=" + (p.isNullValue() ? "null" : p.value()))
+                    .filter(v -> !v.endsWith("="))
+                    .toList();
+            if (!otherValues.isEmpty()) {
+                tips.add("Values: " + String.join(", ", otherValues));
+            }
+
+            if (!tips.isEmpty()) {
+                field.setToolTipText("<html>" + String.join("<br>", tips) + "</html>");
             }
 
             return field;
