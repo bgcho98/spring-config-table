@@ -28,7 +28,7 @@ class MasterMarkdownWriterTest {
         new MasterMarkdownWriter().write(props, file);
 
         var lines = Files.readAllLines(file);
-        var dataLines = lines.stream().filter(l -> l.startsWith("| ") && !l.startsWith("| env") && !l.startsWith("|---")).toList();
+        var dataLines = lines.stream().filter(l -> l.startsWith("| ") && !l.startsWith("| env") && !l.startsWith("| ---")).toList();
         assertThat(dataLines.get(0)).startsWith("| _default");
         assertThat(dataLines.get(1)).startsWith("| alpha");
         assertThat(dataLines.get(2)).startsWith("| real");
@@ -83,6 +83,6 @@ class MasterMarkdownWriterTest {
         new MasterMarkdownWriter().write(props, file);
 
         var content = Files.readString(file);
-        assertThat(content).contains("|-----|");
+        assertThat(content).contains("| --- |");
     }
 }

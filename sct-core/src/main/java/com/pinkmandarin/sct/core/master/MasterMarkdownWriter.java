@@ -121,9 +121,9 @@ public class MasterMarkdownWriter {
         sb.append("\n");
 
         // Separator
-        sb.append("|-----|");
+        sb.append("| --- |");
         for (var ignored : columnNames) {
-            sb.append("-----|");
+            sb.append(" --- |");
         }
         sb.append("\n");
 

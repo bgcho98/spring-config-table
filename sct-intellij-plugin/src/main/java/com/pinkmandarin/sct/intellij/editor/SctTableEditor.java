@@ -14,7 +14,10 @@ import com.pinkmandarin.sct.core.model.Environment;
 import com.pinkmandarin.sct.core.model.Property;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
+import org.cef.callback.CefJSDialogCallback;
+import org.cef.handler.CefJSDialogHandler;
 import org.cef.handler.CefLoadHandlerAdapter;
+import org.cef.misc.BoolRef;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -73,6 +76,35 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
             handleAction(data);
             return new JBCefJSQuery.Response("ok");
         });
+
+        // Handle JS prompt()/confirm()/alert() via Swing dialogs
+        browser.getJBCefClient().addJSDialogHandler(new CefJSDialogHandler() {
+            @Override
+            public boolean onJSDialog(CefBrowser b, String originUrl, JSDialogType dialogType,
+                                      String messageText, String defaultPromptText,
+                                      CefJSDialogCallback callback, BoolRef suppressMessage) {
+                SwingUtilities.invokeLater(() -> {
+                    switch (dialogType) {
+                        case JSDIALOGTYPE_ALERT -> {
+                            JOptionPane.showMessageDialog(mainPanel, messageText);
+                            callback.Continue(true, "");
+                        }
+                        case JSDIALOGTYPE_CONFIRM -> {
+                            int r = JOptionPane.showConfirmDialog(mainPanel, messageText, "Confirm", JOptionPane.YES_NO_OPTION);
+                            callback.Continue(r == JOptionPane.YES_OPTION, "");
+                        }
+                        case JSDIALOGTYPE_PROMPT -> {
+                            String result = JOptionPane.showInputDialog(mainPanel, messageText, defaultPromptText);
+                            callback.Continue(result != null, result != null ? result : "");
+                        }
+                    }
+                });
+                return true;
+            }
+            @Override public boolean onBeforeUnloadDialog(CefBrowser b, String msg, boolean isReload, CefJSDialogCallback cb) { cb.Continue(true, ""); return true; }
+            @Override public void onResetDialogState(CefBrowser b) {}
+            @Override public void onDialogClosed(CefBrowser b) {}
+        }, browser.getCefBrowser());
 
         browser.getJBCefClient().addLoadHandler(new CefLoadHandlerAdapter() {
             @Override
