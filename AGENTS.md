@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Spring Config Table (SCT) - A tool that manages Spring Boot multi-environment YAML config files using Markdown tables. One master Markdown file contains all environment settings in a human-readable table format, and the tool generates per-environment `application-{profile}.yml` files. Also includes YAML Lens (table viewer) and YAML-to-Markdown migration.
+Spring Config Table (SCT) — Manages Spring Boot multi-environment YAML config files using Markdown tables. One master Markdown file contains all environment settings in a human-readable table format with comments. The tool generates per-environment `application-{profile}.yml` files with inline comments preserved.
 
 ## Architecture
 
@@ -15,108 +15,127 @@ sct-intellij-plugin/   IntelliJ IDEA plugin (Gradle-based, separate from Maven)
 ### Data Flow
 
 ```
-[Existing YAML files] --migrate--> [Master Markdown] --generate--> [Per-env YAML files]
-                       \                                          /
-                        `-- YAML Lens (read-only table viewer) --'
+[YAML files] --migrate--> [Master Markdown] --generate--> [Per-env YAML files]
+  # comment                  <!-- comment -->                 # comment
+
+YAML Lens: read-only table viewer for both YAML and Markdown files
+Table Editor: Master-Detail WYSIWYG editor for Markdown files
 ```
 
 ### Key Classes — sct-core
 
-- `MasterMarkdownParser` — Parses Markdown tables into `ParseResult(List<Property>, List<Environment>)`
-- `MasterMarkdownWriter` — Writes `List<Property>` to Markdown table format
-- `YamlExporter` — Converts `List<Property>` to per-environment YAML files via SnakeYAML
-- `YamlImporter` — Imports existing Spring Boot YAML files (supports multi-document `---`)
-  - `parseFile(Path, envName)` — public, parses a single YAML file
-  - `extractEnvName(Path)` — public static, extracts profile name from filename
-  - `importDirectory(Path)` — parses all `application*.yml` in a directory
-- `Property(section, key, env, value, valueType)` — Core data model (immutable record)
-- `Environment(name)` — Environment identifier with `toDisplayName()` / `fromDisplayName()` conversion
+- `MasterMarkdownParser` — Parses Markdown tables + `<!-- comments -->` into `ParseResult`
+- `MasterMarkdownWriter` — Writes `List<Property>` to aligned Markdown tables with `<!-- comments -->`
+  - Column-width-aligned output (no reformat warnings)
+  - Configurable environment sort order (lifecycle × region)
+  - Priority section ordering (server, spring, management, springdoc)
+- `YamlExporter` — Converts properties to per-env YAML files with `# comments`
+  - `insertComments()`: tracks YAML indentation to build full key path for comment matching
+- `YamlImporter` — Imports YAML files (multi-document `---`) with comment extraction
+  - `attachComments()`: 4-strategy matching (exact, key, last segment, suffix)
+  - `importFiles(List<Path>)` — used by both CLI and IntelliJ migrate action
+- `Property(section, key, env, value, valueType, comment)` — Core immutable record
+  - `of()` — from Java objects (type from instanceof)
+  - `ofParsed()` — from user input strings (type auto-detected: "false"→bool, "42"→int)
+  - `withComment()` — returns copy with updated comment
+- `Environment(name)` — With 2D sort comparator (lifecycle × region)
+  - `comparator(lifecycleOrder, regionOrder)` — configurable sort
+- `ParseResult(properties, environments)` — Shared result type
 
 ### Key Classes — sct-intellij-plugin
 
-- `SctGenerator` — Generates YAML from master Markdown (called by watcher/action)
-- `SctStartupActivity` — VFS listener with Alarm debounce for auto-generation
-- `SctFileWatcher` — Project-scoped service caching master file paths
-- `SctSettings` — Persistent settings with `List<ModuleMapping>` (master file → output dir)
-- `SctConfigurable` — Settings UI with editable table for multi-module mappings
-- `YamlLensAction` — Right-click action: YAML or Markdown files → searchable property table
-  - Modeless `DialogWrapper` (`setModal(false)`) — editor stays interactive
-  - Property/Value/Profile filtering with `TableRowSorter`
-  - Natural order sorting via `NaturalOrderComparator` (1, 2, 10 not 1, 10, 2)
-  - Double-click row → navigates to source file line (`OpenFileDescriptor`)
-  - Supports both `.yml`/`.yaml` (via `YamlImporter`) and `.md` (via `MasterMarkdownParser`)
-  - CSV export with BOM UTF-8
-- `MigrateToMarkdownAction` — Right-click action: YAML files → master Markdown
-  - File save dialog, background thread, notification on completion
-- `YamlFileCollector` — Utility collecting YAML/MD files from action events (multi-select, single, directory)
-- `NaturalOrderComparator` — Sorts strings with numeric chunks numerically
-- `SctBundle` — i18n via `DynamicBundle` (EN + KO)
+- `SctGenerator` — Generates YAML from master Markdown
+- `SctStartupActivity` — VFS listener with Alarm debounce, pending path accumulation
+- `SctFileWatcher` — Project-scoped service, normalized path cache
+- `SctSettings` — Persistent settings: mappings, autoGenerate, lifecycleOrder, regionOrder
+- `SctConfigurable` — Settings UI: mappings table + lifecycle/region order fields
+- `YamlLensAction` — Modeless dialog: YAML/MD → searchable property table
+- `MigrateToMarkdownAction` — YAML files → master Markdown with comments
+- `OpenTableEditorAction` — Opens Table editor tab or fallback dialog
+- `YamlFileCollector` — Collects YAML/MD files from action events
+- `NaturalOrderComparator` — "item2" < "item10" sorting
+
+#### Editor (`editor/` package)
+
+- `SctEditorProvider` — FileEditorProvider for `*config*.md` / `*master*.md` files
+- `SctSimpleTableEditor` — Master-Detail editor (primary)
+  - Left: grouped property list with search filter
+    - Groups by first dot-segment when >10 keys (matches Writer's GROUP_THRESHOLD)
+    - Non-selectable group headers with separator lines
+    - `●` marks properties with environment overrides
+  - Right: vertical form with value + comment fields per environment
+    - Type detection: Spring metadata first → `Property.ofParsed()` fallback
+    - Comment field: italic gray, inline with value field
+  - Toolbar: Section selector, Add/Rename/Delete, Save/Reload, +/- Env
+- `SctTableEditor` — JCEF-based editor (fallback, kept but not primary)
+- `SctTableEditorDialog` — Modeless dialog wrapper for editor
+- `SpringMetadataService` — Scans classpath for `spring-configuration-metadata.json`
+  - Property suggestions for column add
+  - Type coercion (java.lang.Boolean → "bool", etc.)
+  - Unknown property warnings on column headers
 
 ## Build
 
 ```bash
-# Maven modules (core, cli, maven-plugin)
 mvn clean install
-
-# IntelliJ plugin (requires sct-core in mavenLocal)
 cd sct-intellij-plugin && ./gradlew buildPlugin
 ```
 
 ## Test
 
 ```bash
-mvn -pl sct-core test    # 63 tests
+mvn -pl sct-core test    # 70 tests
 ```
 
 ## Coding Conventions
 
-- Java 21, using `var`, records, switch expressions, pattern matching
+- Java 21: `var`, records, sealed interfaces, switch expressions, pattern matching
 - Package: `com.pinkmandarin.sct.*`
-- No Lombok — use Java records for data classes
+- No Lombok — Java records for data classes
 - SnakeYAML with `SafeConstructor` (security)
-- IntelliJ plugin: `DynamicBundle` for i18n, `Alarm` for debounce, `@Service(Service.Level.PROJECT)` for project-scoped services
-- Actions registered in `plugin.xml`, text/description via `resource-bundle` key convention
+- IntelliJ plugin: `DynamicBundle` i18n (EN+KO), `Alarm` debounce, `@Service(PROJECT)`
+- Actions in `plugin.xml` with `resource-bundle` key convention
 
 ## Important Design Decisions
 
-### Escape Protocol (Markdown table cells)
+### Comment Round-Trip
 
-Writer escapes in this order: `\` → `\\`, `\n` → `\\n`, `|` → `\|`, then `"` → `\"` inside quotes.
-Parser: pipe (`\|`) is handled during cell splitting in `parseTableRow()`.
-Quote detection happens BEFORE `unescapeCellValue()`. Inside quotes, `\"` → `"`.
-General unescape: `\n` → newline, `\\` → `\`.
+```
+YAML: port: 8080  # HTTP port
+  ↓ YamlImporter.attachComments() — 4-strategy key matching
+Markdown: | 8080 <!-- HTTP port --> |
+  ↓ MasterMarkdownParser — extracts <!-- --> from cells
+Property(value="8080", comment="HTTP port")
+  ↓ YamlExporter.insertComments() — indentation-based path tracking
+YAML: port: 8080 # HTTP port
+```
 
-### Type Preservation
+### Type Detection (Editor)
 
-`Property.valueType` preserves original types (`bool`, `int`, `float`, `string`, `null`).
-Writer quotes string values that look like boolean/number/null to prevent type coercion on round-trip.
-`needsQuoting()` also handles leading/trailing whitespace and empty strings.
+1. Spring metadata: `spring-configuration-metadata.json` → `java.lang.Boolean` → `"bool"`
+2. Fallback: `Property.ofParsed("false")` → `"bool"`, `"42"` → `"int"`
 
-### Section Heading Convention
+### Escape Protocol
 
-`## section.prefix` splits at the **first** dot: section becomes the YAML top-level key, prefix becomes the nested key path. Example: `## spring.datasource` → section=`spring`, prefix=`datasource`.
+Writer: `\` → `\\`, `\n` → `\\n`, `|` → `\|`, `"` → `\"` (inside quotes only).
+Parser: pipe in `parseTableRow()`, quotes before `unescapeCellValue()`, then `\n`→newline, `\\`→`\`.
+
+### Environment Sorting (2D)
+
+Two configurable lists: lifecycle order + region order.
+Sort key: `(regionIdx, lifecycleIdx, alphabetical)`.
+Parsing: prefix match (`gov-beta`), suffix match (`beta-gov`), exact region (`gov`).
 
 ### Section Ordering
 
-`MasterMarkdownWriter.PRIORITY_SECTIONS` defines preferred order: `server`, `spring`, `management`, `springdoc` first, then remaining sections alphabetically.
+`PRIORITY_SECTIONS`: server, spring, management, springdoc first. Rest alphabetical.
 
-### Top-level Scalar Values
+### Grouped Property List
 
-YAML top-level scalars (e.g., `debug: true`) are stored with key `__scalar__` and exported back as direct root-level values (not nested under `__scalar__`).
+When section has >10 keys, groups by first dot-segment with visual separators.
+Display key has group prefix stripped. Matches `MasterMarkdownWriter.GROUP_THRESHOLD`.
 
-### YAML File Matching
+### Table Output Alignment
 
-`application(-[^.]+)?.ya?ml` pattern — matches `application.yml`, `application-beta.yml`, but NOT `applicationFOO.yml`.
-
-### IntelliJ Plugin File Watching
-
-- Uses full normalized path comparison (forward slashes on all platforms for VirtualFile compatibility)
-- Handles `VFileContentChangeEvent`, `VFileCreateEvent`, `VFileMoveEvent`, `VFilePropertyChangeEvent` (rename)
-- Debounces with `Alarm` API (500ms), triggers `generateAll()` to avoid missing concurrent changes
-
-### IntelliJ Plugin Actions
-
-All registered in `plugin.xml` `<actions>`:
-- `GenerateYamlAction` → Tools menu (manual generate from settings mappings)
-- `YamlLensAction` → Project View + Editor popup (YAML/MD files → modeless table dialog)
-- `MigrateToMarkdownAction` → Project View + Editor popup (YAML files → save as Markdown)
+Writer pads all columns to max cell width per column. Separator uses matching dashes.
+Prevents IntelliJ Markdown "reformat table" warnings.
