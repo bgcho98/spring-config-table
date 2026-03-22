@@ -14,10 +14,7 @@ import com.pinkmandarin.sct.core.model.Environment;
 import com.pinkmandarin.sct.core.model.Property;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
-import org.cef.callback.CefJSDialogCallback;
-import org.cef.handler.CefJSDialogHandler;
 import org.cef.handler.CefLoadHandlerAdapter;
-import org.cef.misc.BoolRef;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -76,35 +73,6 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
             handleAction(data);
             return new JBCefJSQuery.Response("ok");
         });
-
-        // Handle JS prompt()/confirm()/alert() via Swing dialogs
-        browser.getJBCefClient().addJSDialogHandler(new CefJSDialogHandler() {
-            @Override
-            public boolean onJSDialog(CefBrowser b, String originUrl, JSDialogType dialogType,
-                                      String messageText, String defaultPromptText,
-                                      CefJSDialogCallback callback, BoolRef suppressMessage) {
-                SwingUtilities.invokeLater(() -> {
-                    switch (dialogType) {
-                        case JSDIALOGTYPE_ALERT -> {
-                            JOptionPane.showMessageDialog(mainPanel, messageText);
-                            callback.Continue(true, "");
-                        }
-                        case JSDIALOGTYPE_CONFIRM -> {
-                            int r = JOptionPane.showConfirmDialog(mainPanel, messageText, "Confirm", JOptionPane.YES_NO_OPTION);
-                            callback.Continue(r == JOptionPane.YES_OPTION, "");
-                        }
-                        case JSDIALOGTYPE_PROMPT -> {
-                            String result = JOptionPane.showInputDialog(mainPanel, messageText, defaultPromptText);
-                            callback.Continue(result != null, result != null ? result : "");
-                        }
-                    }
-                });
-                return true;
-            }
-            @Override public boolean onBeforeUnloadDialog(CefBrowser b, String msg, boolean isReload, CefJSDialogCallback cb) { cb.Continue(true, ""); return true; }
-            @Override public void onResetDialogState(CefBrowser b) {}
-            @Override public void onDialogClosed(CefBrowser b) {}
-        }, browser.getCefBrowser());
 
         browser.getJBCefClient().addLoadHandler(new CefLoadHandlerAdapter() {
             @Override
@@ -193,6 +161,29 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
 
             sb.append("</tbody></table></div>");
         }
+
+        // Modal dialog (replaces prompt/confirm which don't work in JCEF)
+        sb.append("""
+            <div class='modal-overlay' id='modal'>
+                <div class='modal'>
+                    <h3 id='modal-title'></h3>
+                    <input id='modal-input' type='text' />
+                    <div class='modal-btns'>
+                        <button class='btn-cancel' onclick='modalCancel()'>Cancel</button>
+                        <button class='btn-ok' onclick='modalOk()'>OK</button>
+                    </div>
+                </div>
+            </div>
+            <div class='modal-overlay' id='confirm-modal'>
+                <div class='modal'>
+                    <h3 id='confirm-title'></h3>
+                    <div class='modal-btns'>
+                        <button class='btn-cancel' onclick='confirmCancel()'>Cancel</button>
+                        <button class='btn-ok' onclick='confirmOk()'>OK</button>
+                    </div>
+                </div>
+            </div>
+        """);
 
         sb.append("<script>").append(JS).append("</script>");
         sb.append("</body></html>");
@@ -427,6 +418,21 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
                                     outline-offset: -2px; white-space: normal; overflow: visible; }
         td.empty::before { content: '—'; color: var(--empty-fg); font-style: italic; }
         td.null-val { color: var(--null-fg); font-style: italic; }
+
+        /* Modal */
+        .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+                         background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center; }
+        .modal-overlay.active { display:flex; }
+        .modal { background:var(--bg); border:1px solid var(--border); border-radius:8px;
+                 padding:20px; min-width:350px; box-shadow:0 4px 20px rgba(0,0,0,0.3); }
+        .modal h3 { margin:0 0 12px; font-size:14px; color:var(--fg); }
+        .modal input { width:100%; padding:6px 10px; font-size:13px; border:1px solid var(--border);
+                       border-radius:4px; background:var(--hdr-bg); color:var(--fg); margin-bottom:12px; }
+        .modal input:focus { outline:2px solid var(--focus-border); }
+        .modal .modal-btns { display:flex; gap:8px; justify-content:flex-end; }
+        .modal button { padding:5px 16px; border:none; border-radius:4px; cursor:pointer; font-size:12px; }
+        .modal .btn-ok { background:var(--btn-bg); color:var(--btn-fg); }
+        .modal .btn-cancel { background:var(--hdr-bg); color:var(--fg); border:1px solid var(--border); }
     """;
 
     // ========== JavaScript ==========
@@ -473,136 +479,162 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
             }
         }
 
+        // ===== Modal helpers (replace prompt/confirm) =====
+        var _modalCallback = null;
+        var _confirmCallback = null;
+
+        function showModal(title, defaultVal, callback) {
+            _modalCallback = callback;
+            document.getElementById('modal-title').textContent = title;
+            var input = document.getElementById('modal-input');
+            input.value = defaultVal || '';
+            document.getElementById('modal').classList.add('active');
+            setTimeout(function() { input.focus(); input.select(); }, 50);
+        }
+        function modalOk() {
+            var val = document.getElementById('modal-input').value;
+            document.getElementById('modal').classList.remove('active');
+            if (_modalCallback) _modalCallback(val);
+            _modalCallback = null;
+        }
+        function modalCancel() {
+            document.getElementById('modal').classList.remove('active');
+            _modalCallback = null;
+        }
+        function showConfirm(title, callback) {
+            _confirmCallback = callback;
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-modal').classList.add('active');
+        }
+        function confirmOk() {
+            document.getElementById('confirm-modal').classList.remove('active');
+            if (_confirmCallback) _confirmCallback();
+            _confirmCallback = null;
+        }
+        function confirmCancel() {
+            document.getElementById('confirm-modal').classList.remove('active');
+            _confirmCallback = null;
+        }
+        // Enter key in modal input
+        document.getElementById('modal-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); modalOk(); }
+            if (e.key === 'Escape') { e.preventDefault(); modalCancel(); }
+        });
+
+        // ===== Column / Row operations =====
+
         function onAddCol(section) {
-            var key = prompt('New property key:');
-            if (!key || !key.trim()) return;
-            key = key.trim();
+            showModal('New property key:', '', function(key) {
+                if (!key || !key.trim()) return;
+                key = key.trim();
 
-            // Find the table for this section
-            var table = document.querySelector("table[data-section='" + section + "']");
-            if (!table) return;
+                var table = document.querySelector("table[data-section='" + section + "']");
+                if (!table) return;
 
-            // Add header cell before the + button
-            var headerRow = table.querySelector('thead tr');
-            var addTh = headerRow.querySelector('.add-col');
-            var th = document.createElement('th');
-            th.contentEditable = 'true';
-            th.spellcheck = false;
-            th.dataset.section = section;
-            th.dataset.origKey = key;
-            th.onblur = function() { onKeyRename(this); };
-            th.innerHTML = key + "<span class='del-col' onclick='onDeleteCol(this)' title='Delete column'>×</span>";
-            headerRow.insertBefore(th, addTh);
+                var headerRow = table.querySelector('thead tr');
+                var addTh = headerRow.querySelector('.add-col');
+                var th = document.createElement('th');
+                th.contentEditable = 'true';
+                th.spellcheck = false;
+                th.dataset.section = section;
+                th.dataset.origKey = key;
+                th.onblur = function() { onKeyRename(this); };
+                th.innerHTML = key + "<span class='del-col' onclick='onDeleteCol(this)' title='Delete column'>×</span>";
+                headerRow.insertBefore(th, addTh);
 
-            // Add cells to each data row
-            var rows = table.querySelectorAll('tbody tr:not(.add-row)');
-            rows.forEach(function(row) {
-                var envCell = row.querySelector('.env-cell');
-                var env = envCell ? envCell.textContent.replace('×','').trim() : '';
-                // Convert _default display back to internal name
-                if (env === '_default') env = 'default';
-
-                var td = document.createElement('td');
-                td.className = 'empty';
-                td.contentEditable = 'true';
-                td.spellcheck = false;
-                td.dataset.section = section;
-                td.dataset.key = key;
-                td.dataset.env = env;
-                td.onblur = function() { onCellEdit(this); };
-                td.onfocus = function() { onCellFocus(this); };
-
-                var placeholder = row.querySelector('.add-placeholder');
-                row.insertBefore(td, placeholder);
-            });
-
-            // Notify Java
-            if (window.__sct) window.__sct('add-col|' + section + '|' + key);
-            showStatus('Column added (unsaved)', '');
-        }
-
-        function onDeleteCol(span) {
-            var th = span.parentElement;
-            var section = th.dataset.section, key = th.dataset.origKey;
-            if (!confirm('Delete column "' + key + '"?')) return;
-
-            // Find column index
-            var headerRow = th.parentElement;
-            var idx = Array.from(headerRow.children).indexOf(th);
-
-            // Remove header
-            th.remove();
-
-            // Remove cells from each row
-            var table = headerRow.closest('table');
-            table.querySelectorAll('tbody tr:not(.add-row)').forEach(function(row) {
-                if (row.children[idx]) row.children[idx].remove();
-            });
-
-            if (window.__sct) window.__sct('del-col|' + section + '|' + key);
-            showStatus('Column deleted (unsaved)', '');
-        }
-
-        function onAddEnv() {
-            var name = prompt('New environment name:');
-            if (!name || !name.trim()) return;
-            name = name.trim();
-
-            // Add row to every table
-            document.querySelectorAll('table').forEach(function(table) {
-                var section = table.dataset.section;
-                var headerCells = table.querySelectorAll('thead th');
-                var addRow = table.querySelector('.add-row');
-                var tr = document.createElement('tr');
-
-                // Env cell
-                var envTd = document.createElement('td');
-                envTd.className = 'env-cell';
-                envTd.innerHTML = name + "<span class='del-row' onclick=\"onDeleteRow('" + name + "')\" title='Delete'>×</span>";
-                tr.appendChild(envTd);
-
-                // Data cells for each key (skip env-hdr and add-col)
-                for (var i = 1; i < headerCells.length - 1; i++) {
-                    var key = headerCells[i].dataset.origKey;
+                var rows = table.querySelectorAll('tbody tr:not(.add-row)');
+                rows.forEach(function(row) {
+                    var envCell = row.querySelector('.env-cell');
+                    var env = envCell ? envCell.textContent.replace('×','').trim() : '';
+                    if (env === '_default') env = 'default';
                     var td = document.createElement('td');
                     td.className = 'empty';
                     td.contentEditable = 'true';
                     td.spellcheck = false;
                     td.dataset.section = section;
                     td.dataset.key = key;
-                    td.dataset.env = name;
+                    td.dataset.env = env;
                     td.onblur = function() { onCellEdit(this); };
                     td.onfocus = function() { onCellFocus(this); };
-                    tr.appendChild(td);
-                }
+                    var placeholder = row.querySelector('.add-placeholder');
+                    row.insertBefore(td, placeholder);
+                });
 
-                // Placeholder for add-col alignment
-                var ph = document.createElement('td');
-                ph.className = 'add-placeholder';
-                tr.appendChild(ph);
-
-                addRow.parentElement.insertBefore(tr, addRow);
+                if (window.__sct) window.__sct('add-col|' + section + '|' + key);
+                showStatus('Column added (unsaved)', '');
             });
+        }
 
-            if (window.__sct) window.__sct('add-env|' + name);
-            showStatus('Environment added (unsaved)', '');
+        function onDeleteCol(span) {
+            var th = span.parentElement;
+            var section = th.dataset.section, key = th.dataset.origKey;
+            showConfirm('Delete column "' + key + '"?', function() {
+                var headerRow = th.parentElement;
+                var idx = Array.from(headerRow.children).indexOf(th);
+                th.remove();
+                var table = headerRow.closest('table');
+                table.querySelectorAll('tbody tr:not(.add-row)').forEach(function(row) {
+                    if (row.children[idx]) row.children[idx].remove();
+                });
+                if (window.__sct) window.__sct('del-col|' + section + '|' + key);
+                showStatus('Column deleted (unsaved)', '');
+            });
+        }
+
+        function onAddEnv() {
+            showModal('New environment name:', '', function(name) {
+                if (!name || !name.trim()) return;
+                name = name.trim();
+
+                document.querySelectorAll('table').forEach(function(table) {
+                    var section = table.dataset.section;
+                    var headerCells = table.querySelectorAll('thead th');
+                    var addRow = table.querySelector('.add-row');
+                    var tr = document.createElement('tr');
+
+                    var envTd = document.createElement('td');
+                    envTd.className = 'env-cell';
+                    envTd.innerHTML = name + "<span class='del-row' onclick=\"onDeleteRow('" + name + "')\" title='Delete'>×</span>";
+                    tr.appendChild(envTd);
+
+                    for (var i = 1; i < headerCells.length - 1; i++) {
+                        var key = headerCells[i].dataset.origKey;
+                        var td = document.createElement('td');
+                        td.className = 'empty';
+                        td.contentEditable = 'true';
+                        td.spellcheck = false;
+                        td.dataset.section = section;
+                        td.dataset.key = key;
+                        td.dataset.env = name;
+                        td.onblur = function() { onCellEdit(this); };
+                        td.onfocus = function() { onCellFocus(this); };
+                        tr.appendChild(td);
+                    }
+
+                    var ph = document.createElement('td');
+                    ph.className = 'add-placeholder';
+                    tr.appendChild(ph);
+                    addRow.parentElement.insertBefore(tr, addRow);
+                });
+
+                if (window.__sct) window.__sct('add-env|' + name);
+                showStatus('Environment added (unsaved)', '');
+            });
         }
 
         function onDeleteRow(env) {
-            if (!confirm('Delete environment "' + env + '"?')) return;
-
-            // Remove rows from all tables
-            document.querySelectorAll('table').forEach(function(table) {
-                table.querySelectorAll('tbody tr:not(.add-row)').forEach(function(row) {
-                    var envCell = row.querySelector('.env-cell');
-                    if (envCell && envCell.textContent.replace('×','').trim() === env) {
-                        row.remove();
-                    }
+            showConfirm('Delete environment "' + env + '"?', function() {
+                document.querySelectorAll('table').forEach(function(table) {
+                    table.querySelectorAll('tbody tr:not(.add-row)').forEach(function(row) {
+                        var envCell = row.querySelector('.env-cell');
+                        if (envCell && envCell.textContent.replace('×','').trim() === env) {
+                            row.remove();
+                        }
+                    });
                 });
+                if (window.__sct) window.__sct('del-env|' + env);
+                showStatus('Environment deleted (unsaved)', '');
             });
-
-            if (window.__sct) window.__sct('del-env|' + env);
-            showStatus('Environment deleted (unsaved)', '');
         }
 
         function showStatus(msg, cls) {
@@ -628,8 +660,9 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         // Handle add-section from toolbar
         document.querySelector('.toolbar').addEventListener('click', function(e) {
             if (e.target.textContent.includes('Section')) {
-                var name = prompt('New section name:');
-                if (name && window.__sct) window.__sct('add-section|' + name);
+                showModal('New section name:', '', function(name) {
+                    if (name && window.__sct) window.__sct('add-section|' + name);
+                });
             }
         });
     """;
