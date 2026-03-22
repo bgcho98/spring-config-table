@@ -8,7 +8,6 @@ Spring Config Table (SCT) - A tool that manages Spring Boot multi-environment YA
 
 ```
 sct-core/              Core library (parser, writer, exporter, importer)
-sct-cli/               CLI tool (fat JAR)
 sct-maven-plugin/      Maven plugin (generate-resources phase)
 sct-intellij-plugin/   IntelliJ IDEA plugin (Gradle-based, separate from Maven)
 ```
