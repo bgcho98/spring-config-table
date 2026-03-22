@@ -276,4 +276,62 @@ class MasterMarkdownRoundTripTest {
         assertThat(betaYaml).contains("port: 9090");
         assertThat(betaYaml).contains("on-profile: beta");
     }
+
+    @Test
+    void roundTrip_commentsPreserved_mdToYaml() throws Exception {
+        var props = List.of(
+                Property.of("server", "port", "default", 8080, "HTTP server port"),
+                Property.of("server", "host", "default", "localhost", "bind address"),
+                Property.of("server", "port", "beta", 9090, "beta port")
+        );
+
+        // Write to Markdown
+        var mdFile = tempDir.resolve("master.md");
+        new MasterMarkdownWriter().write(props, mdFile);
+
+        // Verify Markdown has HTML comments
+        var mdContent = Files.readString(mdFile);
+        assertThat(mdContent).contains("<!-- HTTP server port -->");
+        assertThat(mdContent).contains("<!-- bind address -->");
+
+        // Parse back from Markdown
+        var parsed = new MasterMarkdownParser().parse(mdFile);
+        assertThat(parsed.properties()).isNotEmpty();
+
+        var portDefault = parsed.properties().stream()
+                .filter(p -> "port".equals(p.key()) && "default".equals(p.env()))
+                .findFirst().orElseThrow();
+        assertThat(portDefault.comment()).isEqualTo("HTTP server port");
+
+        // Export to YAML
+        var outputDir = tempDir.resolve("output");
+        new YamlExporter().exportAll(parsed.properties(), parsed.environments(), outputDir);
+
+        var defaultYaml = Files.readString(outputDir.resolve("application.yml"));
+        assertThat(defaultYaml).contains("port: 8080 # HTTP server port");
+        assertThat(defaultYaml).contains("host: localhost # bind address");
+
+        var betaYaml = Files.readString(outputDir.resolve("application-beta.yml"));
+        assertThat(betaYaml).contains("port: 9090 # beta port");
+    }
+
+    @Test
+    void roundTrip_commentsPreserved_nestedKeys() throws Exception {
+        var props = List.of(
+                Property.of("spring", "datasource.url", "default", "jdbc:mysql://localhost/db", "DB connection URL"),
+                Property.of("spring", "datasource.username", "default", "root", "DB user")
+        );
+
+        var mdFile = tempDir.resolve("master.md");
+        new MasterMarkdownWriter().write(props, mdFile);
+
+        var parsed = new MasterMarkdownParser().parse(mdFile);
+
+        var outputDir = tempDir.resolve("output");
+        new YamlExporter().exportAll(parsed.properties(), parsed.environments(), outputDir);
+
+        var yaml = Files.readString(outputDir.resolve("application.yml"));
+        assertThat(yaml).contains("url: jdbc:mysql://localhost/db # DB connection URL");
+        assertThat(yaml).contains("username: root # DB user");
+    }
 }

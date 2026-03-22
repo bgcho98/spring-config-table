@@ -52,42 +52,60 @@ public class YamlExporter {
 
     /**
      * Post-processes YAML output to insert inline # comments.
-     * Matches each property's last key segment to YAML lines and appends the comment.
+     * Tracks indentation to build the full key path for each YAML line,
+     * then matches against property section.key to find the correct comment.
      */
     private String insertComments(String yaml, List<Property> properties) {
-        // Build map: last key segment → comment
+        // Build map: full property path (section.key) → comment
         var commentMap = new LinkedHashMap<String, String>();
         for (var prop : properties) {
             if (prop.hasComment()) {
-                var lastSegment = prop.key();
-                var dotIdx = lastSegment.lastIndexOf('.');
-                if (dotIdx >= 0) lastSegment = lastSegment.substring(dotIdx + 1);
-                // Remove array index
-                lastSegment = lastSegment.replaceAll("\\[\\d+]", "");
-                commentMap.putIfAbsent(lastSegment, prop.comment());
+                var fullPath = prop.section() + "." + prop.key();
+                // Unescape dots from key for matching against YAML output
+                fullPath = fullPath.replace("\\.", ".");
+                commentMap.put(fullPath, prop.comment());
             }
         }
 
         if (commentMap.isEmpty()) return yaml;
 
+        // Track YAML key path via indentation
         var lines = yaml.split("\n", -1);
         var sb = new StringBuilder();
+        var pathStack = new ArrayList<String>(); // (indent, key) pairs tracked as stack
+        var indentStack = new ArrayList<Integer>();
+
         for (var line : lines) {
             sb.append(line);
-            // Check if this line has a key: value pattern
+
             var trimmed = line.trim();
-            var colonIdx = trimmed.indexOf(':');
-            if (colonIdx > 0 && !trimmed.startsWith("#") && !trimmed.startsWith("-")) {
-                var key = trimmed.substring(0, colonIdx).trim();
-                var comment = commentMap.get(key);
-                if (comment != null && trimmed.length() > colonIdx + 1) {
-                    // Only add comment if line has a value (not just a key with nested block)
-                    var afterColon = trimmed.substring(colonIdx + 1).trim();
-                    if (!afterColon.isEmpty()) {
-                        sb.append(" # ").append(comment);
+            if (!trimmed.isEmpty() && !trimmed.startsWith("#") && !trimmed.startsWith("-")) {
+                var colonIdx = trimmed.indexOf(':');
+                if (colonIdx > 0) {
+                    var key = trimmed.substring(0, colonIdx).trim();
+                    var indent = line.indexOf(key);
+
+                    // Pop stack until current indent level
+                    while (!indentStack.isEmpty() && indentStack.getLast() >= indent) {
+                        indentStack.removeLast();
+                        pathStack.removeLast();
+                    }
+                    pathStack.add(key);
+                    indentStack.add(indent);
+
+                    // Build full path from stack
+                    var fullPath = String.join(".", pathStack);
+
+                    var comment = commentMap.get(fullPath);
+                    if (comment != null) {
+                        var afterColon = trimmed.substring(colonIdx + 1).trim();
+                        if (!afterColon.isEmpty()) {
+                            sb.append(" # ").append(comment);
+                        }
                     }
                 }
             }
+
             sb.append("\n");
         }
         return sb.toString();
