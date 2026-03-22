@@ -67,9 +67,9 @@ Table Editor: Master-Detail WYSIWYG editor for Markdown files
     - Type detection: Spring metadata first → `Property.ofParsed()` fallback
     - Comment field: italic gray, inline with value field
   - Toolbar: Section selector, Add/Rename/Delete, Save/Reload, +/- Env
-- `SctTableEditor` — JCEF-based editor (fallback, kept but not primary)
 - `SctTableEditorDialog` — Modeless dialog wrapper for editor
 - `SpringMetadataService` — Scans classpath for `spring-configuration-metadata.json`
+  - Uses Gson (bundled in IntelliJ) for JSON parsing
   - Property suggestions for column add
   - Type coercion (java.lang.Boolean → "bool", etc.)
   - Unknown property warnings on column headers
@@ -102,7 +102,10 @@ mvn -pl sct-core test    # 70 tests
 
 ```
 YAML: port: 8080  # HTTP port
-  ↓ YamlImporter.attachComments() — 4-strategy key matching
+  ↓ YamlImporter.attachComments() — 3-strategy key matching
+    1. Exact match (full key or section.key)
+    2. Exact match on property key
+    3. Last segment match (only if unambiguous — 1 occurrence)
 Markdown: | 8080 <!-- HTTP port --> |
   ↓ MasterMarkdownParser — extracts <!-- --> from cells
 Property(value="8080", comment="HTTP port")
@@ -139,3 +142,14 @@ Display key has group prefix stripped. Matches `MasterMarkdownWriter.GROUP_THRES
 
 Writer pads all columns to max cell width per column. Separator uses matching dashes.
 Prevents IntelliJ Markdown "reformat table" warnings.
+
+### Separator Detection
+
+Parser checks ALL cells in a row match `-[- ]*` before treating as separator.
+Prevents data like `-Xmx512m` from being misidentified as separator line.
+
+### Thread Safety
+
+- `SctStartupActivity`: pending paths drained via `iterator.remove()` (atomic per-key)
+- `SctFileWatcher`: volatile `Set<String>` replaced atomically, wrapped in `Collections.unmodifiableSet()`
+- `SctSettings.getMappings()`: returns `List.copyOf()` (defensive copy)
