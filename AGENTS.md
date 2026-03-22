@@ -40,12 +40,17 @@ sct-intellij-plugin/   IntelliJ IDEA plugin (Gradle-based, separate from Maven)
 - `SctFileWatcher` — Project-scoped service caching master file paths
 - `SctSettings` — Persistent settings with `List<ModuleMapping>` (master file → output dir)
 - `SctConfigurable` — Settings UI with editable table for multi-module mappings
-- `YamlLensAction` — Right-click action: YAML files → searchable property table dialog
+- `YamlLensAction` — Right-click action: YAML or Markdown files → searchable property table
+  - Modeless `DialogWrapper` (`setModal(false)`) — editor stays interactive
   - Property/Value/Profile filtering with `TableRowSorter`
+  - Natural order sorting via `NaturalOrderComparator` (1, 2, 10 not 1, 10, 2)
+  - Double-click row → navigates to source file line (`OpenFileDescriptor`)
+  - Supports both `.yml`/`.yaml` (via `YamlImporter`) and `.md` (via `MasterMarkdownParser`)
   - CSV export with BOM UTF-8
-  - Uses `DialogWrapper` (not JFrame)
 - `MigrateToMarkdownAction` — Right-click action: YAML files → master Markdown
   - File save dialog, background thread, notification on completion
+- `YamlFileCollector` — Utility collecting YAML/MD files from action events (multi-select, single, directory)
+- `NaturalOrderComparator` — Sorts strings with numeric chunks numerically
 - `SctBundle` — i18n via `DynamicBundle` (EN + KO)
 
 ## Build
@@ -92,6 +97,10 @@ Writer quotes string values that look like boolean/number/null to prevent type c
 
 `## section.prefix` splits at the **first** dot: section becomes the YAML top-level key, prefix becomes the nested key path. Example: `## spring.datasource` → section=`spring`, prefix=`datasource`.
 
+### Section Ordering
+
+`MasterMarkdownWriter.PRIORITY_SECTIONS` defines preferred order: `server`, `spring`, `management`, `springdoc` first, then remaining sections alphabetically.
+
 ### Top-level Scalar Values
 
 YAML top-level scalars (e.g., `debug: true`) are stored with key `__scalar__` and exported back as direct root-level values (not nested under `__scalar__`).
@@ -110,5 +119,5 @@ YAML top-level scalars (e.g., `debug: true`) are stored with key `__scalar__` an
 
 All registered in `plugin.xml` `<actions>`:
 - `GenerateYamlAction` → Tools menu (manual generate from settings mappings)
-- `YamlLensAction` → Project View popup (select YAML files → table dialog)
-- `MigrateToMarkdownAction` → Project View popup (select YAML files → save as Markdown)
+- `YamlLensAction` → Project View + Editor popup (YAML/MD files → modeless table dialog)
+- `MigrateToMarkdownAction` → Project View + Editor popup (YAML files → save as Markdown)
