@@ -62,8 +62,8 @@ public class MasterMarkdownParser {
             var cells = parseTableRow(trimmed);
             if (cells.isEmpty()) continue;
 
-            // Skip separator line (|-----|)
-            if (cells.get(0).startsWith("-")) {
+            // Skip separator line (|-----|) — all cells must be only dashes/spaces
+            if (cells.stream().allMatch(c -> c.matches("-[- ]*"))) {
                 continue;
             }
 

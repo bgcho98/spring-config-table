@@ -168,9 +168,10 @@ public class YamlImporter {
 
             if (yamlComments.isEmpty()) return;
 
-            // Build multiple indexes for matching
-            var byExact = new HashMap<String, String>();       // "request.timeout.ms" → comment
-            var byLastSegment = new HashMap<String, String>(); // "ms" → comment
+            // Build indexes for matching
+            var byExact = new HashMap<String, String>();
+            var byLastSegment = new HashMap<String, String>();
+            var lastSegmentCounts = new HashMap<String, Integer>();
             for (var entry : yamlComments) {
                 var yamlKey = entry[0];
                 var comment = entry[1];
@@ -178,6 +179,7 @@ public class YamlImporter {
                 var lastDot = yamlKey.lastIndexOf('.');
                 var lastSeg = lastDot >= 0 ? yamlKey.substring(lastDot + 1) : yamlKey;
                 byLastSegment.putIfAbsent(lastSeg, comment);
+                lastSegmentCounts.merge(lastSeg, 1, Integer::sum);
             }
 
             // Match to properties
@@ -185,26 +187,18 @@ public class YamlImporter {
                 var prop = properties.get(i);
                 if (prop.hasComment()) continue;
 
-                var propKey = prop.key(); // e.g., "timeout.ms" or "port"
-                var fullKey = prop.section() + "." + propKey; // e.g., "spring.timeout.ms"
+                var propKey = prop.key();
+                var fullKey = prop.section() + "." + propKey;
 
                 // Strategy 1: exact match on full key
                 var comment = byExact.get(fullKey);
                 // Strategy 2: exact match on property key
                 if (comment == null) comment = byExact.get(propKey);
-                // Strategy 3: match by last segment
+                // Strategy 3: match by last segment — only if unambiguous (1 occurrence)
                 if (comment == null) {
                     var lastSeg = lastKeySegment(propKey);
-                    comment = byLastSegment.get(lastSeg);
-                }
-                // Strategy 4: check if any YAML key ends with the property's last segment
-                if (comment == null) {
-                    var lastSeg = lastKeySegment(propKey);
-                    for (var entry : yamlComments) {
-                        if (entry[0].endsWith("." + lastSeg) || entry[0].equals(lastSeg)) {
-                            comment = entry[1];
-                            break;
-                        }
+                    if (lastSegmentCounts.getOrDefault(lastSeg, 0) == 1) {
+                        comment = byLastSegment.get(lastSeg);
                     }
                 }
 

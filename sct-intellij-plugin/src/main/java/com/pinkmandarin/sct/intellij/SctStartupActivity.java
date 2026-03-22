@@ -58,8 +58,13 @@ public class SctStartupActivity implements ProjectActivity {
                 if (newMatch) {
                     alarm.cancelAllRequests();
                     alarm.addRequest(() -> {
-                        var paths = new java.util.ArrayList<>(pendingPaths.keySet());
-                        pendingPaths.clear();
+                        // Atomic drain: remove each key individually to avoid race with put()
+                        var paths = new java.util.ArrayList<String>();
+                        var iter = pendingPaths.keySet().iterator();
+                        while (iter.hasNext()) {
+                            paths.add(iter.next());
+                            iter.remove();
+                        }
                         for (var path : paths) {
                             SctGenerator.generateByFilePath(project, path);
                         }

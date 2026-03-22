@@ -106,7 +106,9 @@ public class YamlExporter {
                 }
             }
 
-            sb.append("\n");
+            if (!line.isEmpty()) { // skip trailing empty element from split
+                sb.append("\n");
+            }
         }
         return sb.toString();
     }
