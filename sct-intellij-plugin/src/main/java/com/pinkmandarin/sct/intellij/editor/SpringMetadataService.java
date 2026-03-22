@@ -248,5 +248,16 @@ public final class SpringMetadataService {
             var lastDot = type.lastIndexOf('.');
             return lastDot >= 0 ? type.substring(lastDot + 1) : type;
         }
+
+        /** Detect valueType from metadata Java type */
+        public String toValueType() {
+            if (type == null) return "string";
+            return switch (type) {
+                case "java.lang.Boolean", "boolean" -> "bool";
+                case "java.lang.Integer", "int", "java.lang.Long", "long" -> "int";
+                case "java.lang.Double", "double", "java.lang.Float", "float" -> "float";
+                default -> "string";
+            };
+        }
     }
 }

@@ -328,15 +328,22 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
     }
 
     private void onFieldChanged(String section, String key, String env, String value, String comment) {
-        // Preserve existing comment if not explicitly changed
         var existingComment = allProperties.stream()
                 .filter(p -> p.section().equals(section) && p.key().equals(key) && p.env().equals(env))
                 .findFirst().map(Property::comment).orElse(null);
         allProperties.removeIf(p -> p.section().equals(section) && p.key().equals(key) && p.env().equals(env));
         if (value != null && !value.isEmpty()) {
             var c = comment != null ? comment : existingComment;
-            // Use ofParsed to detect type from string: "false" → bool, "42" → int
-            allProperties.add(Property.ofParsed(section, key, env, value, c));
+
+            // Try Spring metadata type first, fallback to auto-detect
+            var fullKey = section + "." + key;
+            var meta = SpringMetadataService.getInstance(project).getProperty(fullKey);
+            if (meta != null) {
+                var vt = meta.toValueType();
+                allProperties.add(new Property(section, key, env, "null".equals(value) ? Property.NULL_VALUE : value, vt, c));
+            } else {
+                allProperties.add(Property.ofParsed(section, key, env, value, c));
+            }
         }
         setStatus("Unsaved changes", true);
     }
