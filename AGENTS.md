@@ -32,7 +32,7 @@ Table Editor: Master-Detail WYSIWYG editor for Markdown files
 - `YamlExporter` — Converts properties to per-env YAML files with `# comments`
   - `insertComments()`: tracks YAML indentation to build full key path for comment matching
 - `YamlImporter` — Imports YAML files (multi-document `---`) with comment extraction
-  - `attachComments()`: 4-strategy matching (exact, key, last segment, suffix)
+  - `attachComments()`: 3-strategy matching (exact full key, exact property key, unambiguous last segment)
   - `importFiles(List<Path>)` — used by both CLI and IntelliJ migrate action
 - `Property(section, key, env, value, valueType, comment)` — Core immutable record
   - `of()` — from Java objects (type from instanceof)
