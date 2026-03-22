@@ -14,7 +14,6 @@ import com.pinkmandarin.sct.core.master.MasterMarkdownWriter;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Path;
-import java.util.stream.Collectors;
 
 /**
  * Converts selected YAML files to a master Markdown config table.
@@ -31,7 +30,7 @@ public class MigrateToMarkdownAction extends AnAction {
 
         var yamlFiles = YamlFileCollector.collect(e).stream()
                 .filter(YamlFileCollector::isYaml)
-                .collect(Collectors.toList());
+                .toList();
         if (yamlFiles.isEmpty()) return;
 
         var descriptor = new FileSaverDescriptor(

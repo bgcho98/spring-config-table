@@ -40,8 +40,12 @@ final class NaturalOrderComparator implements Comparator<String> {
                     }
                 }
                 if (lenA > 18 || lenB > 18) {
-                    // Very large numbers: compare by length first, then lexicographic
                     if (lenA != lenB) return Integer.compare(lenA, lenB);
+                    // Same length: compare digit chars lexicographically
+                    for (int j = 0; j < lenA; j++) {
+                        int cmp = Character.compare(a.charAt(ai - lenA + j), b.charAt(bi - lenB + j));
+                        if (cmp != 0) return cmp;
+                    }
                 } else {
                     if (numA != numB) return Long.compare(numA, numB);
                 }

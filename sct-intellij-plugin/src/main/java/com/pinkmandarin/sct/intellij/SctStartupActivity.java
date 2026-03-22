@@ -37,6 +37,7 @@ public class SctStartupActivity implements ProjectActivity {
         Disposer.register(project, disposable);
 
         var alarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, disposable);
+        var pendingPaths = new java.util.concurrent.ConcurrentHashMap<String, Boolean>();
 
         project.getMessageBus().connect(disposable).subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
             @Override
@@ -44,19 +45,22 @@ public class SctStartupActivity implements ProjectActivity {
                 if (!SctSettings.getInstance(project).isAutoGenerate()) return;
 
                 var masterPaths = SctFileWatcher.getInstance(project).getMasterPaths();
-                var matchedPaths = new java.util.LinkedHashSet<String>();
+                boolean newMatch = false;
 
                 for (var event : events) {
                     String filePath = resolveFilePath(event);
                     if (filePath != null && masterPaths.contains(filePath)) {
-                        matchedPaths.add(filePath);
+                        pendingPaths.put(filePath, Boolean.TRUE);
+                        newMatch = true;
                     }
                 }
 
-                if (!matchedPaths.isEmpty()) {
+                if (newMatch) {
                     alarm.cancelAllRequests();
                     alarm.addRequest(() -> {
-                        for (var path : matchedPaths) {
+                        var paths = new java.util.ArrayList<>(pendingPaths.keySet());
+                        pendingPaths.clear();
+                        for (var path : paths) {
                             SctGenerator.generateByFilePath(project, path);
                         }
                     }, DEBOUNCE_MS);
