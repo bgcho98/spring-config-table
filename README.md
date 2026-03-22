@@ -174,4 +174,4 @@ mvn -pl sct-core test
 
 ## 라이선스
 
-PinkMandarin
+[MIT License](LICENSE) © 2026 PinkMandarin
