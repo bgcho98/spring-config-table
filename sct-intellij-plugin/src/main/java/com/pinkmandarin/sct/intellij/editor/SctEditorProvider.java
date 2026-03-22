@@ -10,6 +10,8 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Provides a visual table editor for SCT master Markdown files.
  * Adds a "Table" tab alongside the default text editor.
+ * Accepts any .md file whose name contains "config" or "master",
+ * or any .md file that contains SCT table markers.
  */
 public class SctEditorProvider implements FileEditorProvider, DumbAware {
 
@@ -18,10 +20,17 @@ public class SctEditorProvider implements FileEditorProvider, DumbAware {
     @Override
     public boolean accept(@NotNull Project project, @NotNull VirtualFile file) {
         if (!file.getName().endsWith(".md")) return false;
-        // Quick check: file should contain markdown table markers
+
+        // Fast path: filename heuristic
+        var name = file.getName().toLowerCase();
+        if (name.contains("config") || name.contains("master")) return true;
+
+        // Slow path: check file content for SCT markers
         try {
-            var content = new String(file.contentsToByteArray(), java.nio.charset.StandardCharsets.UTF_8);
-            return content.contains("## ") && content.contains("| env |");
+            // Read only first 2KB to avoid loading large files
+            var bytes = file.contentsToByteArray();
+            var preview = new String(bytes, 0, Math.min(bytes.length, 2048), java.nio.charset.StandardCharsets.UTF_8);
+            return preview.contains("| env |");
         } catch (Exception e) {
             return false;
         }
