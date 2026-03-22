@@ -27,6 +27,8 @@
                 serviceImplementation="com.pinkmandarin.sct.intellij.SctSettings"/>
         <projectService
                 serviceImplementation="com.pinkmandarin.sct.intellij.SctFileWatcher"/>
+        <fileEditorProvider
+                implementation="com.pinkmandarin.sct.intellij.editor.SctEditorProvider"/>
         <notificationGroup id="sct"
                            displayType="BALLOON"
                            isLogByDefault="true"/>
