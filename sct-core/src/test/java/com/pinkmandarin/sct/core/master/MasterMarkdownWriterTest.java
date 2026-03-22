@@ -83,6 +83,6 @@ class MasterMarkdownWriterTest {
         new MasterMarkdownWriter().write(props, file);
 
         var content = Files.readString(file);
-        assertThat(content).contains("| --- |");
+        assertThat(content).contains("|---");
     }
 }

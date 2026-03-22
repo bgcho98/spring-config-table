@@ -124,27 +124,43 @@ public class MasterMarkdownWriter {
                 })
                 .toList();
 
+        // Calculate column widths
+        var colCount = columnNames.size() + 1; // +1 for env column
+        var widths = new int[colCount];
+        widths[0] = "env".length();
+        for (int i = 0; i < columnNames.size(); i++) {
+            widths[i + 1] = columnNames.get(i).length();
+        }
+        for (var env : sortedEnvs) {
+            widths[0] = Math.max(widths[0], env.length());
+            var values = envMap.get(env);
+            for (int i = 0; i < keys.size(); i++) {
+                var val = values.getOrDefault(keys.get(i), "");
+                widths[i + 1] = Math.max(widths[i + 1], val.length());
+            }
+        }
+
         // Table header
-        sb.append("| env |");
-        for (var col : columnNames) {
-            sb.append(" ").append(col).append(" |");
+        sb.append("| ").append(pad("env", widths[0])).append(" |");
+        for (int i = 0; i < columnNames.size(); i++) {
+            sb.append(" ").append(pad(columnNames.get(i), widths[i + 1])).append(" |");
         }
         sb.append("\n");
 
         // Separator
-        sb.append("| --- |");
-        for (var ignored : columnNames) {
-            sb.append(" --- |");
+        sb.append("|").append("-".repeat(widths[0] + 2)).append("|");
+        for (int i = 0; i < columnNames.size(); i++) {
+            sb.append("-".repeat(widths[i + 1] + 2)).append("|");
         }
         sb.append("\n");
 
         // Data rows
         for (var env : sortedEnvs) {
             var values = envMap.get(env);
-            sb.append("| ").append(env).append(" |");
-            for (var key : keys) {
-                var val = values.getOrDefault(key, "");
-                sb.append(" ").append(val).append(" |");
+            sb.append("| ").append(pad(env, widths[0])).append(" |");
+            for (int i = 0; i < keys.size(); i++) {
+                var val = values.getOrDefault(keys.get(i), "");
+                sb.append(" ").append(pad(val, widths[i + 1])).append(" |");
             }
             sb.append("\n");
         }
@@ -202,6 +218,11 @@ public class MasterMarkdownWriter {
             } catch (NumberFormatException ignored) {}
         }
         return false;
+    }
+
+    private static String pad(String s, int width) {
+        if (s.length() >= width) return s;
+        return s + " ".repeat(width - s.length());
     }
 
     private static Comparator<String> sectionComparator() {
