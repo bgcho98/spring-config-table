@@ -27,11 +27,6 @@ import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * WYSIWYG editor for SCT master Markdown files using JCEF (embedded Chromium).
- * Renders markdown as HTML with contenteditable table cells.
- * Edits in the browser sync back to the .md file.
- */
 public class SctTableEditor extends UserDataHolderBase implements FileEditor {
 
     private static final Logger LOG = Logger.getInstance(SctTableEditor.class);
@@ -40,7 +35,7 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
     private final VirtualFile file;
     private final JPanel mainPanel;
     private JBCefBrowser browser;
-    private JBCefJSQuery saveQuery;
+    private JBCefJSQuery actionQuery;
 
     private List<Property> allProperties = new ArrayList<>();
     private List<String> sections = new ArrayList<>();
@@ -72,154 +67,240 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
 
     private void buildUI() {
         browser = new JBCefBrowser();
-        saveQuery = JBCefJSQuery.create(browser);
+        actionQuery = JBCefJSQuery.create(browser);
 
-        // Handle cell edits from JavaScript
-        saveQuery.addHandler((data) -> {
-            handleCellEdit(data);
+        actionQuery.addHandler((data) -> {
+            handleAction(data);
             return new JBCefJSQuery.Response("ok");
         });
 
-        // Load HTML after browser is ready
         browser.getJBCefClient().addLoadHandler(new CefLoadHandlerAdapter() {
             @Override
             public void onLoadEnd(CefBrowser b, CefFrame frame, int httpStatusCode) {
-                // Inject the save callback function
                 b.executeJavaScript(
-                        "window.__sctSave = function(data) { " + saveQuery.inject("data") + " };",
+                        "window.__sct = function(data) { " + actionQuery.inject("data") + " };",
                         "", 0);
             }
         }, browser.getCefBrowser());
 
-        var html = buildHtml();
-        browser.loadHTML(html);
-
-        // Toolbar with Save + Reload buttons
-        var toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
-        var saveBtn = new JButton("Save");
-        saveBtn.addActionListener(e -> saveToFile());
-        toolbar.add(saveBtn);
-
-        var reloadBtn = new JButton("Reload");
-        reloadBtn.addActionListener(e -> {
-            loadFromFile();
-            browser.loadHTML(buildHtml());
-        });
-        toolbar.add(reloadBtn);
-
-        mainPanel.add(toolbar, BorderLayout.NORTH);
+        browser.loadHTML(buildHtml());
         mainPanel.add(browser.getComponent(), BorderLayout.CENTER);
+    }
+
+    private void reload() {
+        loadFromFile();
+        browser.loadHTML(buildHtml());
     }
 
     private String buildHtml() {
         var sb = new StringBuilder();
-        sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'>");
-        sb.append("<style>");
-        sb.append(CSS);
-        sb.append("</style></head><body>");
+        sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'><style>").append(CSS).append("</style></head><body>");
 
-        sb.append("<h1>").append(escHtml(file.getName())).append("</h1>");
-        sb.append("<p class='hint'>Click any cell to edit. Changes are tracked automatically.</p>");
+        // Top toolbar
+        sb.append("<div class='toolbar'>");
+        sb.append("<button onclick=\"act('save')\">💾 Save</button>");
+        sb.append("<button onclick=\"act('reload')\">🔄 Reload</button>");
+        sb.append("<button onclick=\"act('add-section')\">+ Section</button>");
+        sb.append("<span id='status'></span>");
+        sb.append("</div>");
 
         for (var section : sections) {
             var sectionProps = allProperties.stream()
-                    .filter(p -> p.section().equals(section))
-                    .toList();
+                    .filter(p -> p.section().equals(section)).toList();
             var keys = sectionProps.stream()
                     .map(Property::key).distinct().sorted().toList();
 
-            sb.append("<h2>").append(escHtml(section)).append("</h2>");
-            sb.append("<table><thead><tr><th class='env-col'>env</th>");
-            for (var key : keys) {
-                sb.append("<th>").append(escHtml(key)).append("</th>");
-            }
-            sb.append("</tr></thead><tbody>");
+            // Section heading — editable
+            sb.append("<div class='section-header'>");
+            sb.append("<h2 contenteditable='true' spellcheck='false' data-orig='").append(escAttr(section))
+              .append("' onblur='onSectionRename(this)'>").append(escHtml(section)).append("</h2>");
+            sb.append("</div>");
 
+            // Table
+            sb.append("<div class='table-wrap'><table data-section='").append(escAttr(section)).append("'>");
+
+            // Header row — editable keys + add/remove
+            sb.append("<thead><tr><th class='env-hdr'>env</th>");
+            for (var key : keys) {
+                sb.append("<th contenteditable='true' spellcheck='false' data-section='").append(escAttr(section))
+                  .append("' data-orig-key='").append(escAttr(key))
+                  .append("' onblur='onKeyRename(this)'>").append(escHtml(key))
+                  .append("<span class='del-col' onclick='onDeleteCol(this)' title='Delete column'>×</span>")
+                  .append("</th>");
+            }
+            sb.append("<th class='add-col' onclick=\"onAddCol('").append(escAttr(section)).append("')\" title='Add column'>+</th>");
+            sb.append("</tr></thead>");
+
+            // Data rows
+            sb.append("<tbody>");
             for (var env : environments) {
-                var displayEnv = Environment.DEFAULT_ENV.equals(env)
-                        ? Environment.DEFAULT_DISPLAY : env;
-                sb.append("<tr><td class='env-col'>").append(escHtml(displayEnv)).append("</td>");
+                var displayEnv = Environment.DEFAULT_ENV.equals(env) ? Environment.DEFAULT_DISPLAY : env;
+                sb.append("<tr><td class='env-cell'>").append(escHtml(displayEnv))
+                  .append("<span class='del-row' onclick=\"onDeleteRow('").append(escAttr(env)).append("')\" title='Delete environment'>×</span>")
+                  .append("</td>");
                 for (var key : keys) {
                     var prop = sectionProps.stream()
-                            .filter(p -> p.key().equals(key) && p.env().equals(env))
-                            .findFirst();
+                            .filter(p -> p.key().equals(key) && p.env().equals(env)).findFirst();
                     var value = prop.map(p -> p.isNullValue() ? "null" : p.value()).orElse("");
-                    var cssClass = value.isEmpty() ? "empty" : "null".equals(value) ? "null-val" : "";
+                    var cls = value.isEmpty() ? "empty" : "null".equals(value) ? "null-val" : "";
 
-                    sb.append("<td class='").append(cssClass).append("' contenteditable='true' ")
-                      .append("data-section='").append(escAttr(section)).append("' ")
-                      .append("data-key='").append(escAttr(key)).append("' ")
-                      .append("data-env='").append(escAttr(env)).append("' ")
-                      .append("onblur='onCellEdit(this)'>");
-                    sb.append(value.isEmpty() ? "" : escHtml(value));
-                    sb.append("</td>");
+                    sb.append("<td class='").append(cls).append("' contenteditable='true' spellcheck='false' ")
+                      .append("data-section='").append(escAttr(section))
+                      .append("' data-key='").append(escAttr(key))
+                      .append("' data-env='").append(escAttr(env))
+                      .append("' onblur='onCellEdit(this)' onfocus='onCellFocus(this)'>")
+                      .append(value.isEmpty() ? "" : escHtml(value))
+                      .append("</td>");
                 }
-                sb.append("</tr>");
+                sb.append("<td class='add-placeholder'></td></tr>");
             }
-            sb.append("</tbody></table>");
+
+            // Add environment row
+            sb.append("<tr class='add-row'><td colspan='").append(keys.size() + 2)
+              .append("' onclick='onAddEnv()'>+ Add environment</td></tr>");
+
+            sb.append("</tbody></table></div>");
         }
 
-        sb.append("<script>");
-        sb.append(JS);
-        sb.append("</script>");
+        sb.append("<script>").append(JS).append("</script>");
         sb.append("</body></html>");
         return sb.toString();
     }
 
+    // --- Action handler from JavaScript ---
+
+    private void handleAction(String data) {
+        if (data.startsWith("save")) {
+            SwingUtilities.invokeLater(this::saveToFile);
+        } else if (data.startsWith("reload")) {
+            SwingUtilities.invokeLater(this::reload);
+        } else if (data.startsWith("cell|")) {
+            handleCellEdit(data.substring(5));
+        } else if (data.startsWith("rename-section|")) {
+            handleSectionRename(data.substring(15));
+        } else if (data.startsWith("rename-key|")) {
+            handleKeyRename(data.substring(11));
+        } else if (data.startsWith("add-col|")) {
+            handleAddCol(data.substring(8));
+        } else if (data.startsWith("del-col|")) {
+            handleDeleteCol(data.substring(8));
+        } else if (data.startsWith("add-env|")) {
+            handleAddEnv(data.substring(8));
+        } else if (data.startsWith("del-env|")) {
+            handleDeleteEnv(data.substring(8));
+        } else if (data.startsWith("add-section|")) {
+            handleAddSection(data.substring(12));
+        }
+    }
+
     private void handleCellEdit(String data) {
-        // Format: section|key|env|value
         var parts = data.split("\\|", 4);
         if (parts.length < 4) return;
+        var section = parts[0]; var key = parts[1]; var env = parts[2]; var value = parts[3];
 
-        var section = parts[0];
-        var key = parts[1];
-        var env = parts[2];
-        var value = parts[3];
-
-        // Remove old property
-        allProperties.removeIf(p -> p.section().equals(section)
-                && p.key().equals(key) && p.env().equals(env));
-
-        // Add updated property
+        allProperties.removeIf(p -> p.section().equals(section) && p.key().equals(key) && p.env().equals(env));
         if (!value.isEmpty()) {
-            if ("null".equals(value)) {
-                allProperties.add(Property.of(section, key, env, null));
+            allProperties.add("null".equals(value) ? Property.of(section, key, env, null) : Property.of(section, key, env, value));
+        }
+    }
+
+    private void handleSectionRename(String data) {
+        var parts = data.split("\\|", 2);
+        if (parts.length < 2) return;
+        var oldName = parts[0]; var newName = parts[1].trim();
+        if (newName.isEmpty() || oldName.equals(newName)) return;
+
+        var updated = new ArrayList<Property>();
+        for (var p : allProperties) {
+            if (p.section().equals(oldName)) {
+                updated.add(new Property(newName, p.key(), p.env(), p.value(), p.valueType()));
             } else {
-                allProperties.add(Property.of(section, key, env, value));
+                updated.add(p);
             }
         }
+        allProperties = updated;
+        sections.replaceAll(s -> s.equals(oldName) ? newName : s);
+    }
+
+    private void handleKeyRename(String data) {
+        var parts = data.split("\\|", 3);
+        if (parts.length < 3) return;
+        var section = parts[0]; var oldKey = parts[1]; var newKey = parts[2].trim();
+        if (newKey.isEmpty() || oldKey.equals(newKey)) return;
+
+        var updated = new ArrayList<Property>();
+        for (var p : allProperties) {
+            if (p.section().equals(section) && p.key().equals(oldKey)) {
+                updated.add(new Property(p.section(), newKey, p.env(), p.value(), p.valueType()));
+            } else {
+                updated.add(p);
+            }
+        }
+        allProperties = updated;
+    }
+
+    private void handleAddCol(String section) {
+        for (var env : environments) {
+            allProperties.add(Property.of(section, "new-key", env, ""));
+        }
+        SwingUtilities.invokeLater(this::reload);
+    }
+
+    private void handleDeleteCol(String data) {
+        var parts = data.split("\\|", 2);
+        if (parts.length < 2) return;
+        var section = parts[0]; var key = parts[1];
+        allProperties.removeIf(p -> p.section().equals(section) && p.key().equals(key));
+        SwingUtilities.invokeLater(this::reload);
+    }
+
+    private void handleAddEnv(String envName) {
+        if (envName.isBlank() || environments.contains(envName.trim())) return;
+        environments.add(envName.trim());
+        SwingUtilities.invokeLater(this::reload);
+    }
+
+    private void handleDeleteEnv(String env) {
+        environments.remove(env);
+        allProperties.removeIf(p -> p.env().equals(env));
+        SwingUtilities.invokeLater(this::reload);
+    }
+
+    private void handleAddSection(String name) {
+        if (name.isBlank() || sections.contains(name.trim())) return;
+        sections.add(name.trim());
+        for (var env : environments) {
+            allProperties.add(Property.of(name.trim(), "key", env, ""));
+        }
+        SwingUtilities.invokeLater(this::reload);
     }
 
     private void saveToFile() {
         try {
             new MasterMarkdownWriter().write(allProperties, Path.of(file.getPath()));
             file.refresh(false, false);
-            browser.getCefBrowser().executeJavaScript(
-                    "document.getElementById('status').textContent = 'Saved!'; " +
-                    "document.getElementById('status').className = 'status saved';",
-                    "", 0);
+            execJs("showStatus('Saved!', 'saved')");
         } catch (IOException e) {
-            LOG.warn("Failed to save: " + file.getPath(), e);
-            browser.getCefBrowser().executeJavaScript(
-                    "document.getElementById('status').textContent = 'Save failed: " +
-                    escJs(e.getMessage()) + "'; document.getElementById('status').className = 'status error';",
-                    "", 0);
+            LOG.warn("Failed to save", e);
+            execJs("showStatus('Save failed: " + escJs(e.getMessage()) + "', 'error')");
         }
+    }
+
+    private void execJs(String js) {
+        browser.getCefBrowser().executeJavaScript(js, "", 0);
     }
 
     private static String escHtml(String s) {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
-
     private static String escAttr(String s) {
         return escHtml(s).replace("'", "&#39;");
     }
-
     private static String escJs(String s) {
         return s == null ? "" : s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
     }
 
-    // --- FileEditor interface ---
+    // --- FileEditor ---
 
     @Override public @NotNull JComponent getComponent() { return mainPanel; }
     @Override public @Nullable JComponent getPreferredFocusedComponent() { return browser.getComponent(); }
@@ -227,95 +308,187 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
     @Override public void setState(@NotNull FileEditorState state) {}
     @Override public boolean isModified() { return false; }
     @Override public boolean isValid() { return file.isValid(); }
-    @Override public void addPropertyChangeListener(@NotNull PropertyChangeListener listener) {}
-    @Override public void removePropertyChangeListener(@NotNull PropertyChangeListener listener) {}
+    @Override public void addPropertyChangeListener(@NotNull PropertyChangeListener l) {}
+    @Override public void removePropertyChangeListener(@NotNull PropertyChangeListener l) {}
     @Override public @Nullable VirtualFile getFile() { return file; }
-
-    @Override
-    public void dispose() {
-        if (saveQuery != null) saveQuery.dispose();
+    @Override public void dispose() {
+        if (actionQuery != null) actionQuery.dispose();
         if (browser != null) browser.dispose();
     }
 
-    // --- CSS ---
+    // ========== CSS ==========
 
     private static final String CSS = """
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            padding: 16px 24px;
-            background: #1e1e1e; color: #ccc;
-            line-height: 1.5;
+        :root {
+            --bg: #1e1f22; --fg: #bcbec4; --border: #393b40;
+            --hdr-bg: #2b2d30; --hdr-fg: #dfe1e5;
+            --focus-bg: #2d4f67; --focus-border: #4285f4;
+            --empty-fg: #5c5e63; --null-fg: #e06c75;
+            --section-fg: #6aafff; --btn-bg: #3574a5; --btn-fg: #fff;
+            --add-bg: #2a3a2a; --add-fg: #6aab73;
+            --del-fg: #e06c75; --saved-fg: #6aab73; --error-fg: #e06c75;
+            --toolbar-bg: #2b2d30;
         }
         @media (prefers-color-scheme: light) {
-            body { background: #fff; color: #333; }
-            table { border-color: #ddd; }
-            th { background: #f5f5f5; color: #333; }
-            td { border-color: #e0e0e0; }
-            td:focus { background: #e8f0fe; outline-color: #4285f4; }
-            td.empty::before { color: #bbb; }
-            td.null-val { color: #d32f2f; }
-            h1, h2 { color: #222; }
-            .hint { color: #888; }
-            .status.saved { color: #2e7d32; }
-            .status.error { color: #d32f2f; }
+            :root {
+                --bg: #fff; --fg: #1f1f1f; --border: #d4d4d4;
+                --hdr-bg: #f3f3f3; --hdr-fg: #1f1f1f;
+                --focus-bg: #e3f2fd; --focus-border: #1976d2;
+                --empty-fg: #aaa; --null-fg: #c62828;
+                --section-fg: #1565c0; --btn-bg: #1976d2; --btn-fg: #fff;
+                --add-bg: #e8f5e9; --add-fg: #2e7d32;
+                --del-fg: #c62828; --saved-fg: #2e7d32; --error-fg: #c62828;
+                --toolbar-bg: #f5f5f5;
+            }
         }
-        h1 { font-size: 20px; margin-bottom: 4px; color: #e0e0e0; }
-        h2 { font-size: 15px; margin: 20px 0 8px; color: #8ab4f8;
-             border-bottom: 1px solid #333; padding-bottom: 4px; }
-        .hint { font-size: 12px; color: #777; margin-bottom: 12px; }
-        table { border-collapse: collapse; width: 100%; margin-bottom: 16px; font-size: 13px; }
-        th, td { border: 1px solid #3a3a3a; padding: 5px 8px; text-align: left; min-width: 80px; }
-        th { background: #2a2a2a; color: #aaa; font-weight: 600; font-size: 12px;
-             position: sticky; top: 0; z-index: 1; }
-        td { transition: background 0.15s; }
-        td:focus { background: #1a3a5c; outline: 2px solid #4285f4; outline-offset: -2px; }
-        td.empty::before { content: '(inherit)'; color: #555; font-style: italic; }
-        td.null-val { color: #ef5350; font-style: italic; }
-        .env-col { font-weight: 600; background: #252525; min-width: 100px; }
-        #status { padding: 8px 0; font-size: 12px; }
-        .status.saved { color: #66bb6a; }
-        .status.error { color: #ef5350; }
+        * { box-sizing: border-box; }
+        body { font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 13px;
+               background: var(--bg); color: var(--fg); padding: 0; margin: 0; }
+
+        .toolbar { position: sticky; top: 0; z-index: 100; background: var(--toolbar-bg);
+                   padding: 8px 16px; border-bottom: 1px solid var(--border);
+                   display: flex; align-items: center; gap: 8px; }
+        .toolbar button { background: var(--btn-bg); color: var(--btn-fg); border: none;
+                          padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .toolbar button:hover { filter: brightness(1.15); }
+        #status { margin-left: 12px; font-size: 12px; }
+        .saved { color: var(--saved-fg); } .error { color: var(--error-fg); }
+
+        .section-header { padding: 16px 16px 0; }
+        h2 { font-size: 16px; color: var(--section-fg); padding: 4px 8px; border-radius: 4px;
+             display: inline-block; cursor: text; border: 1px solid transparent; }
+        h2:hover { border-color: var(--border); }
+        h2:focus { outline: 2px solid var(--focus-border); border-color: transparent; }
+
+        .table-wrap { padding: 8px 16px 16px; overflow-x: auto; }
+        table { border-collapse: collapse; width: max-content; min-width: 100%; }
+        th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+                 min-width: 100px; max-width: 400px; white-space: nowrap; overflow: hidden;
+                 text-overflow: ellipsis; position: relative; }
+        th { background: var(--hdr-bg); color: var(--hdr-fg); font-weight: 600;
+             font-size: 12px; position: sticky; top: 45px; z-index: 10;
+             cursor: text; user-select: text; }
+        th:focus { outline: 2px solid var(--focus-border); }
+
+        .env-hdr { min-width: 110px; font-weight: 700; }
+        .env-cell { font-weight: 600; background: var(--hdr-bg); min-width: 110px; position: relative; }
+        .del-col { position: absolute; right: 3px; top: 2px; color: var(--del-fg);
+                   cursor: pointer; font-size: 14px; opacity: 0; transition: opacity 0.15s; }
+        th:hover .del-col { opacity: 0.7; }
+        .del-col:hover { opacity: 1 !important; }
+        .del-row { position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+                   color: var(--del-fg); cursor: pointer; font-size: 14px; opacity: 0; transition: opacity 0.15s; }
+        .env-cell:hover .del-row { opacity: 0.7; }
+        .del-row:hover { opacity: 1 !important; }
+
+        .add-col { background: var(--add-bg); color: var(--add-fg); font-size: 18px;
+                   text-align: center; cursor: pointer; min-width: 40px; width: 40px; font-weight: 700; }
+        .add-col:hover { filter: brightness(1.2); }
+        .add-placeholder { border: none; background: transparent; min-width: 40px; width: 40px; }
+
+        .add-row td { background: var(--add-bg); color: var(--add-fg); text-align: center;
+                      cursor: pointer; font-size: 12px; padding: 4px; }
+        .add-row td:hover { filter: brightness(1.2); }
+
+        td[contenteditable] { cursor: text; }
+        td[contenteditable]:focus { background: var(--focus-bg); outline: 2px solid var(--focus-border);
+                                    outline-offset: -2px; white-space: normal; overflow: visible; }
+        td.empty::before { content: '—'; color: var(--empty-fg); font-style: italic; }
+        td.null-val { color: var(--null-fg); font-style: italic; }
     """;
 
-    // --- JavaScript ---
+    // ========== JavaScript ==========
 
     private static final String JS = """
-        function onCellEdit(cell) {
-            var section = cell.getAttribute('data-section');
-            var key = cell.getAttribute('data-key');
-            var env = cell.getAttribute('data-env');
-            var value = cell.textContent.trim();
-
-            // Update visual class
-            cell.className = value === '' ? 'empty' : (value === 'null' ? 'null-val' : '');
-
-            // Send to Java
-            if (window.__sctSave) {
-                window.__sctSave(section + '|' + key + '|' + env + '|' + value);
-            }
-
-            // Show unsaved indicator
-            var status = document.getElementById('status');
-            if (status) { status.textContent = 'Unsaved changes'; status.className = 'status'; }
+        function act(action) {
+            if (window.__sct) window.__sct(action);
         }
 
-        // Prevent Enter from creating new lines in cells
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && e.target.hasAttribute('contenteditable')) {
-                e.preventDefault();
-                e.target.blur();
+        function onCellEdit(cell) {
+            var s = cell.dataset.section, k = cell.dataset.key, e = cell.dataset.env;
+            var v = cell.textContent.trim();
+            cell.className = v === '' ? 'empty' : (v === 'null' ? 'null-val' : '');
+            if (window.__sct) window.__sct('cell|' + s + '|' + k + '|' + e + '|' + v);
+            showStatus('Unsaved changes', '');
+        }
+
+        function onCellFocus(cell) {
+            // Clear placeholder for editing
+            if (cell.classList.contains('empty')) cell.textContent = '';
+        }
+
+        function onSectionRename(h2) {
+            var orig = h2.dataset.orig, val = h2.textContent.trim();
+            if (val && val !== orig && window.__sct) {
+                window.__sct('rename-section|' + orig + '|' + val);
+                h2.dataset.orig = val;
+                showStatus('Section renamed (unsaved)', '');
             }
-            // Tab to next cell
-            if (e.key === 'Tab' && e.target.hasAttribute('contenteditable')) {
+        }
+
+        function onKeyRename(th) {
+            var section = th.dataset.section, orig = th.dataset.origKey;
+            // Get text without the × button
+            var val = '';
+            for (var node of th.childNodes) {
+                if (node.nodeType === 3) val += node.textContent;
+            }
+            val = val.trim();
+            if (val && val !== orig && window.__sct) {
+                window.__sct('rename-key|' + section + '|' + orig + '|' + val);
+                th.dataset.origKey = val;
+                showStatus('Key renamed (unsaved)', '');
+            }
+        }
+
+        function onAddCol(section) {
+            if (window.__sct) window.__sct('add-col|' + section);
+        }
+
+        function onDeleteCol(span) {
+            var th = span.parentElement;
+            var section = th.dataset.section, key = th.dataset.origKey;
+            if (confirm('Delete column "' + key + '"?')) {
+                if (window.__sct) window.__sct('del-col|' + section + '|' + key);
+            }
+        }
+
+        function onAddEnv() {
+            var name = prompt('New environment name:');
+            if (name && window.__sct) window.__sct('add-env|' + name);
+        }
+
+        function onDeleteRow(env) {
+            if (confirm('Delete environment "' + env + '"?')) {
+                if (window.__sct) window.__sct('del-env|' + env);
+            }
+        }
+
+        function showStatus(msg, cls) {
+            var el = document.getElementById('status');
+            if (el) { el.textContent = msg; el.className = cls; }
+        }
+
+        // Keyboard: Enter=commit, Tab=next cell, Escape=cancel
+        document.addEventListener('keydown', function(e) {
+            var t = e.target;
+            if (!t.hasAttribute('contenteditable')) return;
+            if (e.key === 'Enter') { e.preventDefault(); t.blur(); }
+            if (e.key === 'Escape') { e.preventDefault(); t.blur(); }
+            if (e.key === 'Tab') {
                 e.preventDefault();
                 var cells = Array.from(document.querySelectorAll('td[contenteditable]'));
-                var idx = cells.indexOf(e.target);
+                var idx = cells.indexOf(t);
                 var next = e.shiftKey ? idx - 1 : idx + 1;
-                if (next >= 0 && next < cells.length) {
-                    e.target.blur();
-                    cells[next].focus();
-                }
+                if (next >= 0 && next < cells.length) { t.blur(); cells[next].focus(); }
+            }
+        });
+
+        // Handle add-section from toolbar
+        document.querySelector('.toolbar').addEventListener('click', function(e) {
+            if (e.target.textContent.includes('Section')) {
+                var name = prompt('New section name:');
+                if (name && window.__sct) window.__sct('add-section|' + name);
             }
         });
     """;
