@@ -1,17 +1,34 @@
 <idea-plugin>
     <id>com.pinkmandarin.sct</id>
     <name>Spring Config Table</name>
-    <vendor>PinkMandarin</vendor>
+    <vendor url="https://github.com/pinkmandarin/spring-config-table">PinkMandarin</vendor>
     <resource-bundle>messages.SctBundle</resource-bundle>
     <description><![CDATA[
-        Generates per-environment Spring Boot YAML config files from a master Markdown table.<br/>
+        <p>Manage Spring Boot multi-environment YAML config files using a single Markdown table.</p>
         <ul>
-            <li>Auto-regenerates YAML when the master Markdown file changes</li>
-            <li>Manual: Tools &rarr; Generate YAML from Master Markdown</li>
-            <li>YAML Lens: Select YAML files &rarr; Right-click &rarr; View as table with filtering</li>
-            <li>Migrate: Select YAML files &rarr; Right-click &rarr; Convert to master Markdown</li>
+            <li><b>Visual Table Editor</b> — Master-Detail layout with grouped property list and inline editing</li>
+            <li><b>YAML Lens</b> — View YAML/Markdown files as a searchable property table</li>
+            <li><b>YAML &harr; Markdown Migration</b> — Convert with comment preservation</li>
+            <li><b>Auto-Generation</b> — Regenerates YAML on master file change</li>
+            <li><b>Spring Metadata</b> — Type detection from spring-configuration-metadata.json</li>
+            <li><b>Comment Round-Trip</b> — YAML # comments &harr; Markdown &lt;!-- comments --&gt;</li>
         </ul>
     ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>1.0.0</h3>
+        <ul>
+            <li>Initial release</li>
+            <li>Visual table editor with Master-Detail layout</li>
+            <li>YAML Lens viewer with search, filter, natural sort</li>
+            <li>YAML &harr; Markdown migration with comments</li>
+            <li>Spring Boot metadata integration</li>
+            <li>Configurable environment sorting (lifecycle &times; region)</li>
+            <li>Auto-generation with debounce</li>
+            <li>Multi-module support</li>
+            <li>i18n: English + Korean</li>
+        </ul>
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
 
