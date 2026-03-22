@@ -289,38 +289,37 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
             }
             row.add(label, BorderLayout.WEST);
 
+            final var envName = env;
+
+            // Value + Comment in one row using split panel
             var field = new JTextField(value);
             field.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
             if (value.isEmpty()) {
-                field.putClientProperty("JTextField.placeholderText", "(inherit from default)");
+                field.putClientProperty("JTextField.placeholderText", "(inherit)");
             }
-            final var envName = env;
             field.addFocusListener(new java.awt.event.FocusAdapter() {
                 @Override public void focusLost(java.awt.event.FocusEvent e) {
                     onFieldChanged(section, selectedKey, envName, field.getText(), null);
                 }
             });
-            row.add(field, BorderLayout.CENTER);
 
-            detailPanel.add(row);
-
-            // Comment row (smaller, gray, indented)
             var commentField = new JTextField(comment != null ? comment : "");
             commentField.setFont(commentField.getFont().deriveFont(Font.ITALIC, 11f));
             commentField.setForeground(JBColor.GRAY);
-            commentField.putClientProperty("JTextField.placeholderText", "comment...");
+            commentField.putClientProperty("JTextField.placeholderText", "# comment");
             commentField.addFocusListener(new java.awt.event.FocusAdapter() {
                 @Override public void focusLost(java.awt.event.FocusEvent e) {
                     onCommentChanged(section, selectedKey, envName, commentField.getText());
                 }
             });
-            var commentRow = new JPanel(new BorderLayout(8, 0));
-            commentRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-            commentRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
-            commentRow.add(Box.createHorizontalStrut(130), BorderLayout.WEST);
-            commentRow.add(commentField, BorderLayout.CENTER);
-            detailPanel.add(commentRow);
-            detailPanel.add(Box.createVerticalStrut(6));
+
+            var fieldsPanel = new JPanel(new GridLayout(1, 2, 4, 0));
+            fieldsPanel.add(field);
+            fieldsPanel.add(commentField);
+            row.add(fieldsPanel, BorderLayout.CENTER);
+
+            detailPanel.add(row);
+            detailPanel.add(Box.createVerticalStrut(4));
         }
 
         detailPanel.add(Box.createVerticalGlue());
