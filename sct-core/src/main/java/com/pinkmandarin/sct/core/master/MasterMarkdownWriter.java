@@ -22,6 +22,9 @@ import java.util.stream.Collectors;
 public class MasterMarkdownWriter {
 
     private static final int GROUP_THRESHOLD = 10;
+    private static final List<String> PRIORITY_SECTIONS = List.of(
+            "server", "spring", "management", "springdoc"
+    );
 
     public void write(List<Property> properties, Path outputPath) throws IOException {
         var sb = new StringBuilder();
@@ -30,7 +33,7 @@ public class MasterMarkdownWriter {
         sb.append("> `_default` = application.yml, empty cell = inherit default, `null` = explicit null override\n\n");
 
         var bySection = properties.stream()
-                .collect(Collectors.groupingBy(Property::section, TreeMap::new, Collectors.toList()));
+                .collect(Collectors.groupingBy(Property::section, () -> new TreeMap<>(sectionComparator()), Collectors.toList()));
 
         for (var sectionEntry : bySection.entrySet()) {
             var section = sectionEntry.getKey();
@@ -178,5 +181,16 @@ public class MasterMarkdownWriter {
             } catch (NumberFormatException ignored) {}
         }
         return false;
+    }
+
+    private static Comparator<String> sectionComparator() {
+        return (a, b) -> {
+            int ia = PRIORITY_SECTIONS.indexOf(a);
+            int ib = PRIORITY_SECTIONS.indexOf(b);
+            if (ia >= 0 && ib >= 0) return Integer.compare(ia, ib);
+            if (ia >= 0) return -1;
+            if (ib >= 0) return 1;
+            return a.compareTo(b);
+        };
     }
 }
