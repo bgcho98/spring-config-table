@@ -239,11 +239,14 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         allProperties = updated;
     }
 
-    private void handleAddCol(String section) {
+    private void handleAddCol(String data) {
+        var parts = data.split("\\|", 2);
+        if (parts.length < 2) return;
+        var section = parts[0]; var key = parts[1].trim();
+        if (key.isEmpty()) return;
         for (var env : environments) {
-            allProperties.add(Property.of(section, "new-key", env, ""));
+            allProperties.add(Property.of(section, key, env, ""));
         }
-        SwingUtilities.invokeLater(this::reload);
     }
 
     private void handleDeleteCol(String data) {
@@ -251,19 +254,16 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         if (parts.length < 2) return;
         var section = parts[0]; var key = parts[1];
         allProperties.removeIf(p -> p.section().equals(section) && p.key().equals(key));
-        SwingUtilities.invokeLater(this::reload);
     }
 
     private void handleAddEnv(String envName) {
         if (envName.isBlank() || environments.contains(envName.trim())) return;
         environments.add(envName.trim());
-        SwingUtilities.invokeLater(this::reload);
     }
 
     private void handleDeleteEnv(String env) {
         environments.remove(env);
         allProperties.removeIf(p -> p.env().equals(env));
-        SwingUtilities.invokeLater(this::reload);
     }
 
     private void handleAddSection(String name) {
@@ -272,6 +272,7 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         for (var env : environments) {
             allProperties.add(Property.of(name.trim(), "key", env, ""));
         }
+        // Section add requires full reload since it's a new table
         SwingUtilities.invokeLater(this::reload);
     }
 
@@ -441,26 +442,135 @@ public class SctTableEditor extends UserDataHolderBase implements FileEditor {
         }
 
         function onAddCol(section) {
-            if (window.__sct) window.__sct('add-col|' + section);
+            var key = prompt('New property key:');
+            if (!key || !key.trim()) return;
+            key = key.trim();
+
+            // Find the table for this section
+            var table = document.querySelector("table[data-section='" + section + "']");
+            if (!table) return;
+
+            // Add header cell before the + button
+            var headerRow = table.querySelector('thead tr');
+            var addTh = headerRow.querySelector('.add-col');
+            var th = document.createElement('th');
+            th.contentEditable = 'true';
+            th.spellcheck = false;
+            th.dataset.section = section;
+            th.dataset.origKey = key;
+            th.onblur = function() { onKeyRename(this); };
+            th.innerHTML = key + "<span class='del-col' onclick='onDeleteCol(this)' title='Delete column'>×</span>";
+            headerRow.insertBefore(th, addTh);
+
+            // Add cells to each data row
+            var rows = table.querySelectorAll('tbody tr:not(.add-row)');
+            rows.forEach(function(row) {
+                var envCell = row.querySelector('.env-cell');
+                var env = envCell ? envCell.textContent.replace('×','').trim() : '';
+                // Convert _default display back to internal name
+                if (env === '_default') env = 'default';
+
+                var td = document.createElement('td');
+                td.className = 'empty';
+                td.contentEditable = 'true';
+                td.spellcheck = false;
+                td.dataset.section = section;
+                td.dataset.key = key;
+                td.dataset.env = env;
+                td.onblur = function() { onCellEdit(this); };
+                td.onfocus = function() { onCellFocus(this); };
+
+                var placeholder = row.querySelector('.add-placeholder');
+                row.insertBefore(td, placeholder);
+            });
+
+            // Notify Java
+            if (window.__sct) window.__sct('add-col|' + section + '|' + key);
+            showStatus('Column added (unsaved)', '');
         }
 
         function onDeleteCol(span) {
             var th = span.parentElement;
             var section = th.dataset.section, key = th.dataset.origKey;
-            if (confirm('Delete column "' + key + '"?')) {
-                if (window.__sct) window.__sct('del-col|' + section + '|' + key);
-            }
+            if (!confirm('Delete column "' + key + '"?')) return;
+
+            // Find column index
+            var headerRow = th.parentElement;
+            var idx = Array.from(headerRow.children).indexOf(th);
+
+            // Remove header
+            th.remove();
+
+            // Remove cells from each row
+            var table = headerRow.closest('table');
+            table.querySelectorAll('tbody tr:not(.add-row)').forEach(function(row) {
+                if (row.children[idx]) row.children[idx].remove();
+            });
+
+            if (window.__sct) window.__sct('del-col|' + section + '|' + key);
+            showStatus('Column deleted (unsaved)', '');
         }
 
         function onAddEnv() {
             var name = prompt('New environment name:');
-            if (name && window.__sct) window.__sct('add-env|' + name);
+            if (!name || !name.trim()) return;
+            name = name.trim();
+
+            // Add row to every table
+            document.querySelectorAll('table').forEach(function(table) {
+                var section = table.dataset.section;
+                var headerCells = table.querySelectorAll('thead th');
+                var addRow = table.querySelector('.add-row');
+                var tr = document.createElement('tr');
+
+                // Env cell
+                var envTd = document.createElement('td');
+                envTd.className = 'env-cell';
+                envTd.innerHTML = name + "<span class='del-row' onclick=\"onDeleteRow('" + name + "')\" title='Delete'>×</span>";
+                tr.appendChild(envTd);
+
+                // Data cells for each key (skip env-hdr and add-col)
+                for (var i = 1; i < headerCells.length - 1; i++) {
+                    var key = headerCells[i].dataset.origKey;
+                    var td = document.createElement('td');
+                    td.className = 'empty';
+                    td.contentEditable = 'true';
+                    td.spellcheck = false;
+                    td.dataset.section = section;
+                    td.dataset.key = key;
+                    td.dataset.env = name;
+                    td.onblur = function() { onCellEdit(this); };
+                    td.onfocus = function() { onCellFocus(this); };
+                    tr.appendChild(td);
+                }
+
+                // Placeholder for add-col alignment
+                var ph = document.createElement('td');
+                ph.className = 'add-placeholder';
+                tr.appendChild(ph);
+
+                addRow.parentElement.insertBefore(tr, addRow);
+            });
+
+            if (window.__sct) window.__sct('add-env|' + name);
+            showStatus('Environment added (unsaved)', '');
         }
 
         function onDeleteRow(env) {
-            if (confirm('Delete environment "' + env + '"?')) {
-                if (window.__sct) window.__sct('del-env|' + env);
-            }
+            if (!confirm('Delete environment "' + env + '"?')) return;
+
+            // Remove rows from all tables
+            document.querySelectorAll('table').forEach(function(table) {
+                table.querySelectorAll('tbody tr:not(.add-row)').forEach(function(row) {
+                    var envCell = row.querySelector('.env-cell');
+                    if (envCell && envCell.textContent.replace('×','').trim() === env) {
+                        row.remove();
+                    }
+                });
+            });
+
+            if (window.__sct) window.__sct('del-env|' + env);
+            showStatus('Environment deleted (unsaved)', '');
         }
 
         function showStatus(msg, cls) {
