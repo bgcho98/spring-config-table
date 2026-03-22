@@ -138,13 +138,17 @@ public class YamlImporter {
 
     /**
      * Reads the raw YAML file and extracts inline comments (# ...) on property lines.
-     * Matches comments to properties by finding the last key segment on each line.
+     * Matches comments to properties using multiple strategies:
+     * 1. Full YAML key match (for dotted keys like "request.timeout.ms")
+     * 2. Last segment match (for nested keys like "ms" under "timeout")
+     * 3. Key suffix match (property key ends with YAML key)
      */
     private void attachComments(Path file, List<Property> properties) {
         try {
             var lines = Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8);
-            // Build a map: last key segment → comment
-            var commentMap = new HashMap<String, String>();
+
+            // Build list of (yamlKey, comment) pairs from raw file
+            var yamlComments = new ArrayList<String[]>();
             for (var line : lines) {
                 var commentIdx = findInlineComment(line);
                 if (commentIdx < 0) continue;
@@ -152,27 +156,58 @@ public class YamlImporter {
                 var comment = line.substring(commentIdx + 1).trim();
                 if (comment.isEmpty()) continue;
 
-                // Extract the key from the YAML line (before the colon)
                 var beforeComment = line.substring(0, commentIdx);
                 var colonIdx = beforeComment.indexOf(':');
                 if (colonIdx < 0) continue;
 
-                var keyPart = beforeComment.substring(0, colonIdx).trim();
-                // keyPart could be "  port" or "    url" — last segment after indentation
-                if (!keyPart.isEmpty()) {
-                    commentMap.put(keyPart, comment);
+                var yamlKey = beforeComment.substring(0, colonIdx).trim();
+                if (!yamlKey.isEmpty()) {
+                    yamlComments.add(new String[]{yamlKey, comment});
                 }
             }
 
-            if (commentMap.isEmpty()) return;
+            if (yamlComments.isEmpty()) return;
 
-            // Match comments to properties by last key segment
+            // Build multiple indexes for matching
+            var byExact = new HashMap<String, String>();       // "request.timeout.ms" → comment
+            var byLastSegment = new HashMap<String, String>(); // "ms" → comment
+            for (var entry : yamlComments) {
+                var yamlKey = entry[0];
+                var comment = entry[1];
+                byExact.put(yamlKey, comment);
+                var lastDot = yamlKey.lastIndexOf('.');
+                var lastSeg = lastDot >= 0 ? yamlKey.substring(lastDot + 1) : yamlKey;
+                byLastSegment.putIfAbsent(lastSeg, comment);
+            }
+
+            // Match to properties
             for (int i = 0; i < properties.size(); i++) {
                 var prop = properties.get(i);
                 if (prop.hasComment()) continue;
 
-                var lastSegment = lastKeySegment(prop.key());
-                var comment = commentMap.get(lastSegment);
+                var propKey = prop.key(); // e.g., "timeout.ms" or "port"
+                var fullKey = prop.section() + "." + propKey; // e.g., "spring.timeout.ms"
+
+                // Strategy 1: exact match on full key
+                var comment = byExact.get(fullKey);
+                // Strategy 2: exact match on property key
+                if (comment == null) comment = byExact.get(propKey);
+                // Strategy 3: match by last segment
+                if (comment == null) {
+                    var lastSeg = lastKeySegment(propKey);
+                    comment = byLastSegment.get(lastSeg);
+                }
+                // Strategy 4: check if any YAML key ends with the property's last segment
+                if (comment == null) {
+                    var lastSeg = lastKeySegment(propKey);
+                    for (var entry : yamlComments) {
+                        if (entry[0].endsWith("." + lastSeg) || entry[0].equals(lastSeg)) {
+                            comment = entry[1];
+                            break;
+                        }
+                    }
+                }
+
                 if (comment != null) {
                     properties.set(i, prop.withComment(comment));
                 }
