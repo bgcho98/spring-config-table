@@ -19,6 +19,7 @@ public class SctConfigurable implements Configurable {
     private final Project project;
     private JCheckBox autoGenerateCheckBox;
     private MappingTableModel tableModel;
+    private JTextField envOrderField;
 
     public SctConfigurable(Project project) {
         this.project = project;
@@ -37,10 +38,28 @@ public class SctConfigurable implements Configurable {
 
         var panel = new JPanel(new BorderLayout(0, 8));
 
-        // Auto-generate checkbox at top
+        // Top options
+        var topPanel = new JPanel();
+        topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
+
         autoGenerateCheckBox = new JCheckBox(
                 SctBundle.message("settings.autoGenerate"), settings.isAutoGenerate());
-        panel.add(autoGenerateCheckBox, BorderLayout.NORTH);
+        autoGenerateCheckBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        topPanel.add(autoGenerateCheckBox);
+        topPanel.add(Box.createVerticalStrut(8));
+
+        // Environment order
+        var envPanel = new JPanel(new BorderLayout(4, 0));
+        envPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        envPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        envPanel.add(new JLabel(SctBundle.message("settings.envOrder")), BorderLayout.WEST);
+        envOrderField = new JTextField(settings.getEnvOrder());
+        envOrderField.setToolTipText("Comma-separated environment names in display order. Variants (e.g., gov-beta) auto-sort after their base.");
+        envPanel.add(envOrderField, BorderLayout.CENTER);
+        topPanel.add(envPanel);
+        topPanel.add(Box.createVerticalStrut(4));
+
+        panel.add(topPanel, BorderLayout.NORTH);
 
         // Module mappings table
         tableModel = new MappingTableModel(settings.getMappings());
@@ -62,10 +81,11 @@ public class SctConfigurable implements Configurable {
 
     @Override
     public boolean isModified() {
-        if (autoGenerateCheckBox == null || tableModel == null) return false;
+        if (autoGenerateCheckBox == null || tableModel == null || envOrderField == null) return false;
 
         var settings = SctSettings.getInstance(project);
         if (autoGenerateCheckBox.isSelected() != settings.isAutoGenerate()) return true;
+        if (!Objects.equals(envOrderField.getText(), settings.getEnvOrder())) return true;
 
         var current = settings.getMappings();
         var edited = tableModel.getMappings();
@@ -84,15 +104,17 @@ public class SctConfigurable implements Configurable {
         var settings = SctSettings.getInstance(project);
         settings.setAutoGenerate(autoGenerateCheckBox.isSelected());
         settings.setMappings(tableModel.getMappings());
+        settings.setEnvOrder(envOrderField.getText());
         SctFileWatcher.getInstance(project).refreshCache();
     }
 
     @Override
     public void reset() {
-        if (autoGenerateCheckBox == null || tableModel == null) return;
+        if (autoGenerateCheckBox == null || tableModel == null || envOrderField == null) return;
         var settings = SctSettings.getInstance(project);
         autoGenerateCheckBox.setSelected(settings.isAutoGenerate());
         tableModel.setMappings(settings.getMappings());
+        envOrderField.setText(settings.getEnvOrder());
     }
 
     private static class MappingTableModel extends AbstractTableModel {
@@ -116,9 +138,7 @@ public class SctConfigurable implements Configurable {
             for (var m : source) mappings.add(m.copy());
         }
 
-        List<SctSettings.ModuleMapping> getMappings() {
-            return mappings;
-        }
+        List<SctSettings.ModuleMapping> getMappings() { return mappings; }
 
         void setMappings(List<SctSettings.ModuleMapping> source) {
             mappings.clear();
@@ -136,25 +156,10 @@ public class SctConfigurable implements Configurable {
             fireTableRowsDeleted(row, row);
         }
 
-        @Override
-        public int getRowCount() {
-            return mappings.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return getColumns().length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return getColumns()[column];
-        }
-
-        @Override
-        public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return true;
-        }
+        @Override public int getRowCount() { return mappings.size(); }
+        @Override public int getColumnCount() { return getColumns().length; }
+        @Override public String getColumnName(int col) { return getColumns()[col]; }
+        @Override public boolean isCellEditable(int row, int col) { return true; }
 
         @Override
         public Object getValueAt(int row, int col) {

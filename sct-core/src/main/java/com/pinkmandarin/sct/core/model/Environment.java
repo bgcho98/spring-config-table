@@ -8,45 +8,44 @@ public record Environment(String name) {
     public static final String DEFAULT_ENV = "default";
     public static final String DEFAULT_DISPLAY = "_default";
 
-    /**
-     * Lifecycle-based priority. Environments are sorted by matching
-     * their base profile (before first '-') against this list.
-     * Variants like "gov-beta" sort after their base ("gov").
-     * Unknown profiles sort at the end alphabetically.
-     */
-    private static final List<String> LIFECYCLE_ORDER = List.of(
+    private static final List<String> DEFAULT_LIFECYCLE_ORDER = List.of(
             "default", "local", "dev", "alpha", "beta", "real", "release", "dr", "gov"
     );
 
-    public static final Comparator<String> ENV_COMPARATOR = (a, b) -> {
-        int pa = priority(a);
-        int pb = priority(b);
-        if (pa != pb) return Integer.compare(pa, pb);
-        return a.compareTo(b); // same priority group → alphabetical
-    };
+    /** Default comparator using built-in lifecycle order */
+    public static final Comparator<String> ENV_COMPARATOR = comparator(DEFAULT_LIFECYCLE_ORDER);
 
-    private static int priority(String env) {
-        // Exact match first
-        var idx = LIFECYCLE_ORDER.indexOf(env);
+    /** Create a comparator from a custom lifecycle order list */
+    public static Comparator<String> comparator(List<String> lifecycleOrder) {
+        return (a, b) -> {
+            int pa = priority(a, lifecycleOrder);
+            int pb = priority(b, lifecycleOrder);
+            if (pa != pb) return Integer.compare(pa, pb);
+            return a.compareTo(b);
+        };
+    }
+
+    private static int priority(String env, List<String> order) {
+        var idx = order.indexOf(env);
         if (idx >= 0) return idx * 100;
 
-        // Check if env starts with a known base (e.g., "gov-beta" → base "gov")
-        for (int i = 0; i < LIFECYCLE_ORDER.size(); i++) {
-            var base = LIFECYCLE_ORDER.get(i);
+        // Base-prefix variant: "beta-dr" → after "beta"
+        for (int i = 0; i < order.size(); i++) {
+            var base = order.get(i);
             if (env.startsWith(base + "-")) {
-                return i * 100 + 50; // after the base, before next group
+                return i * 100 + 50;
             }
         }
 
-        // Check if env contains a known lifecycle as suffix (e.g., "ncgn-real" → "real")
-        for (int i = 0; i < LIFECYCLE_ORDER.size(); i++) {
-            var base = LIFECYCLE_ORDER.get(i);
+        // Suffix variant: "ncgn-real" → grouped by lifecycle suffix
+        for (int i = 0; i < order.size(); i++) {
+            var base = order.get(i);
             if (env.endsWith("-" + base)) {
-                return 900 + i; // after all known groups, sub-sorted by lifecycle
+                return 900 + i;
             }
         }
 
-        return 9999; // unknown → end
+        return 9999;
     }
 
     public String toFileName() {

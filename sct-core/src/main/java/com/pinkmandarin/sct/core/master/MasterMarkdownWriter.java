@@ -26,6 +26,14 @@ public class MasterMarkdownWriter {
             "server", "spring", "management", "springdoc"
     );
 
+    private List<String> envOrder = List.of();
+
+    /** Set custom environment sort order. If empty, uses default lifecycle order. */
+    public MasterMarkdownWriter withEnvOrder(List<String> envOrder) {
+        this.envOrder = envOrder;
+        return this;
+    }
+
     public void write(List<Property> properties, Path outputPath) throws IOException {
         var sb = new StringBuilder();
         sb.append("# Application Properties\n\n");
@@ -104,12 +112,12 @@ public class MasterMarkdownWriter {
         }
 
         // Sort environments by priority order
+        var comp = envOrder.isEmpty() ? Environment.ENV_COMPARATOR : Environment.comparator(envOrder);
         var sortedEnvs = envMap.keySet().stream()
                 .sorted((a, b) -> {
-                    // Convert display names back to internal for comparison
                     var ia = Environment.fromDisplayName(a).name();
                     var ib = Environment.fromDisplayName(b).name();
-                    return Environment.ENV_COMPARATOR.compare(ia, ib);
+                    return comp.compare(ia, ib);
                 })
                 .toList();
 

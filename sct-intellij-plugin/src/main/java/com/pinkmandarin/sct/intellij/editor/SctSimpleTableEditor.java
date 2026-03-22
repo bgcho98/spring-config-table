@@ -70,9 +70,11 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
         try {
             var result = new MasterMarkdownParser().parse(Path.of(file.getPath()));
             allProperties = new ArrayList<>(result.properties());
+            var envOrder = com.pinkmandarin.sct.intellij.SctSettings.getInstance(project).getEnvOrderList();
+            var envComparator = Environment.comparator(envOrder);
             environments = result.environments().stream()
                     .map(Environment::name)
-                    .sorted(Environment.ENV_COMPARATOR)
+                    .sorted(envComparator)
                     .collect(Collectors.toCollection(ArrayList::new));
             sections = allProperties.stream()
                     .map(Property::section).distinct().collect(Collectors.toCollection(ArrayList::new));
@@ -409,7 +411,8 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
 
     private void save() {
         try {
-            new MasterMarkdownWriter().write(allProperties, Path.of(file.getPath()));
+            var envOrder = com.pinkmandarin.sct.intellij.SctSettings.getInstance(project).getEnvOrderList();
+            new MasterMarkdownWriter().withEnvOrder(envOrder).write(allProperties, Path.of(file.getPath()));
             file.refresh(false, false);
             setStatus("Saved!", false);
         } catch (IOException e) {

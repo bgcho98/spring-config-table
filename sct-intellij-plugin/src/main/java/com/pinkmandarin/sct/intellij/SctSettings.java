@@ -16,6 +16,8 @@ import java.util.List;
 @State(name = "SctSettings", storages = @Storage("sct.xml"))
 public final class SctSettings implements PersistentStateComponent<SctSettings.State> {
 
+    public static final String DEFAULT_ENV_ORDER = "default, local, dev, alpha, beta, real, release, dr, gov";
+
     private State state = new State();
 
     public static SctSettings getInstance(@NotNull Project project) {
@@ -48,6 +50,26 @@ public final class SctSettings implements PersistentStateComponent<SctSettings.S
         state.autoGenerate = autoGenerate;
     }
 
+    public String getEnvOrder() {
+        return state.envOrder;
+    }
+
+    public void setEnvOrder(String envOrder) {
+        state.envOrder = envOrder;
+    }
+
+    /** Parse the comma-separated envOrder string into a list */
+    public List<String> getEnvOrderList() {
+        var order = state.envOrder;
+        if (order == null || order.isBlank()) order = DEFAULT_ENV_ORDER;
+        var result = new ArrayList<String>();
+        for (var s : order.split(",")) {
+            var trimmed = s.trim();
+            if (!trimmed.isEmpty()) result.add(trimmed);
+        }
+        return result;
+    }
+
     @Tag("module-mapping")
     public static class ModuleMapping {
         public String masterFile = "master-config.md";
@@ -69,5 +91,6 @@ public final class SctSettings implements PersistentStateComponent<SctSettings.S
         @XCollection(elementTypes = ModuleMapping.class)
         public List<ModuleMapping> mappings = new ArrayList<>(List.of(new ModuleMapping()));
         public boolean autoGenerate = true;
+        public String envOrder = DEFAULT_ENV_ORDER;
     }
 }
