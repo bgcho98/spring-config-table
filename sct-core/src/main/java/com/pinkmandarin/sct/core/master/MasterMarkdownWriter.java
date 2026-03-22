@@ -103,15 +103,15 @@ public class MasterMarkdownWriter {
                     .put(prop.key(), formatValue(prop));
         }
 
-        // _default first, rest alphabetical
-        var sortedEnvs = new ArrayList<String>();
-        if (envMap.containsKey(Environment.DEFAULT_DISPLAY)) {
-            sortedEnvs.add(Environment.DEFAULT_DISPLAY);
-        }
-        envMap.keySet().stream()
-                .filter(e -> !Environment.DEFAULT_DISPLAY.equals(e))
-                .sorted()
-                .forEach(sortedEnvs::add);
+        // Sort environments by priority order
+        var sortedEnvs = envMap.keySet().stream()
+                .sorted((a, b) -> {
+                    // Convert display names back to internal for comparison
+                    var ia = Environment.fromDisplayName(a).name();
+                    var ib = Environment.fromDisplayName(b).name();
+                    return Environment.ENV_COMPARATOR.compare(ia, ib);
+                })
+                .toList();
 
         // Table header
         sb.append("| env |");

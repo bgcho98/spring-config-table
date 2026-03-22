@@ -71,7 +71,9 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
             var result = new MasterMarkdownParser().parse(Path.of(file.getPath()));
             allProperties = new ArrayList<>(result.properties());
             environments = result.environments().stream()
-                    .map(Environment::name).collect(Collectors.toCollection(ArrayList::new));
+                    .map(Environment::name)
+                    .sorted(Environment.ENV_COMPARATOR)
+                    .collect(Collectors.toCollection(ArrayList::new));
             sections = allProperties.stream()
                     .map(Property::section).distinct().collect(Collectors.toCollection(ArrayList::new));
         } catch (IOException e) {
