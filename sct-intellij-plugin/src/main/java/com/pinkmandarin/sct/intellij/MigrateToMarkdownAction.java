@@ -45,8 +45,10 @@ public class MigrateToMarkdownAction extends AnAction {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 var parseResult = new YamlImporter().importFiles(filePaths);
-                var envOrder = SctSettings.getInstance(project).getEnvOrderList();
-                new MasterMarkdownWriter().withEnvOrder(envOrder).write(parseResult.properties(), outputPath);
+                var sctS = SctSettings.getInstance(project);
+                new MasterMarkdownWriter()
+                        .withEnvOrder(sctS.getLifecycleOrderList(), sctS.getRegionOrderList())
+                        .write(parseResult.properties(), outputPath);
 
                 ApplicationManager.getApplication().invokeLater(() ->
                         VirtualFileManager.getInstance().asyncRefresh(() ->

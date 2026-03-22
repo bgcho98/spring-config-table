@@ -32,38 +32,59 @@ class EnvironmentTest {
     }
 
     @Test
-    void envComparator_lifecycleOrder() {
-        var envs = Arrays.asList(
-                "real", "gov-beta", "alpha", "default", "beta-dr", "ncgn-real",
-                "dev", "beta", "gov", "ngcc-beta", "local", "release", "dr"
-        );
+    void envComparator_baseLifecycleOrder() {
+        var envs = Arrays.asList("real", "alpha", "default", "beta-dr", "dev", "beta", "local", "release", "dr");
         envs.sort(Environment.ENV_COMPARATOR);
-
-        // default → local → dev → alpha → beta → beta-dr → real → release → dr → gov → gov-beta → ncgn-real → ngcc-beta
-        assertThat(envs.get(0)).isEqualTo("default");
-        assertThat(envs.get(1)).isEqualTo("local");
-        assertThat(envs.get(2)).isEqualTo("dev");
-        assertThat(envs.get(3)).isEqualTo("alpha");
-        assertThat(envs.get(4)).isEqualTo("beta");
-        assertThat(envs.get(5)).isEqualTo("beta-dr");
-
-        // beta-dr comes after beta (variant of beta group)
-        assertThat(envs.indexOf("beta-dr")).isGreaterThan(envs.indexOf("beta"));
-        // gov-beta comes after gov
-        assertThat(envs.indexOf("gov-beta")).isGreaterThan(envs.indexOf("gov"));
-        // ncgn-real, ngcc-beta at end (region variants)
-        assertThat(envs.indexOf("ncgn-real")).isGreaterThan(envs.indexOf("gov-beta"));
+        assertThat(envs).containsExactly("default", "local", "dev", "alpha", "beta", "beta-dr", "real", "release", "dr");
     }
 
     @Test
-    void envComparator_unknownProfilesAtEnd() {
-        var envs = Arrays.asList("custom-env", "default", "beta", "zzz");
+    void envComparator_regionsAfterBase() {
+        var envs = Arrays.asList("gov-beta", "beta", "default", "gov", "ncgn-real", "real", "beta-gov");
         envs.sort(Environment.ENV_COMPARATOR);
 
+        // Base first: default, beta, real
+        // Then gov region: beta-gov, gov-beta, gov
+        // Then ncgn region: ncgn-real
         assertThat(envs.get(0)).isEqualTo("default");
         assertThat(envs.get(1)).isEqualTo("beta");
-        // unknown at end, alphabetical
-        assertThat(envs.indexOf("custom-env")).isGreaterThan(envs.indexOf("beta"));
-        assertThat(envs.indexOf("zzz")).isGreaterThan(envs.indexOf("custom-env"));
+        assertThat(envs.get(2)).isEqualTo("real");
+        // gov group
+        assertThat(envs.indexOf("beta-gov")).isGreaterThan(envs.indexOf("real"));
+        assertThat(envs.indexOf("gov-beta")).isGreaterThan(envs.indexOf("beta-gov")); // alpha tiebreaker
+        assertThat(envs.indexOf("gov")).isGreaterThan(envs.indexOf("gov-beta"));
+        // ncgn group
+        assertThat(envs.indexOf("ncgn-real")).isGreaterThan(envs.indexOf("gov"));
+    }
+
+    @Test
+    void envComparator_withinRegion_lifecycleOrder() {
+        var envs = Arrays.asList("gov", "gov-real", "gov-beta", "gov-alpha");
+        envs.sort(Environment.ENV_COMPARATOR);
+        // alpha < beta < real < gov(plain)
+        assertThat(envs).containsExactly("gov-alpha", "gov-beta", "gov-real", "gov");
+    }
+
+    @Test
+    void envComparator_unknownAtEnd() {
+        var envs = Arrays.asList("custom", "default", "beta", "zzz");
+        envs.sort(Environment.ENV_COMPARATOR);
+        assertThat(envs.get(0)).isEqualTo("default");
+        assertThat(envs.get(1)).isEqualTo("beta");
+        assertThat(envs.indexOf("custom")).isGreaterThan(envs.indexOf("beta"));
+    }
+
+    @Test
+    void customComparator() {
+        var lifecycle = List.of("dev", "staging", "prod");
+        var regions = List.of("us", "eu", "ap");
+        var comp = Environment.comparator(lifecycle, regions);
+
+        var envs = Arrays.asList("eu-prod", "prod", "dev", "us-staging", "staging");
+        envs.sort(comp);
+        // Base: dev, staging, prod
+        // us: us-staging
+        // eu: eu-prod
+        assertThat(envs).containsExactly("dev", "staging", "prod", "us-staging", "eu-prod");
     }
 }

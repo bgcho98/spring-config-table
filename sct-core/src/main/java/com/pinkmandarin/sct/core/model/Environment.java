@@ -8,44 +8,74 @@ public record Environment(String name) {
     public static final String DEFAULT_ENV = "default";
     public static final String DEFAULT_DISPLAY = "_default";
 
-    private static final List<String> DEFAULT_LIFECYCLE_ORDER = List.of(
-            "default", "local", "dev", "alpha", "beta", "real", "release", "dr", "gov"
+    public static final List<String> DEFAULT_LIFECYCLE_ORDER = List.of(
+            "default", "local", "dev", "alpha", "beta", "beta-dr", "real", "release", "dr"
+    );
+    public static final List<String> DEFAULT_REGION_ORDER = List.of(
+            "gov", "ncgn", "ngcc", "ngsc", "ninc", "ngovc", "ngoic"
     );
 
-    /** Default comparator using built-in lifecycle order */
-    public static final Comparator<String> ENV_COMPARATOR = comparator(DEFAULT_LIFECYCLE_ORDER);
+    public static final Comparator<String> ENV_COMPARATOR =
+            comparator(DEFAULT_LIFECYCLE_ORDER, DEFAULT_REGION_ORDER);
 
-    /** Create a comparator from a custom lifecycle order list */
-    public static Comparator<String> comparator(List<String> lifecycleOrder) {
+    /**
+     * Two-dimensional sort: region first, lifecycle within region.
+     *
+     * Parse env name:
+     * - Exact lifecycle match → (region=0, lifecycle=idx)
+     * - Prefix "{region}-xxx" → (region=idx+1, lifecycle from xxx)
+     * - Suffix "xxx-{region}" → (region=idx+1, lifecycle from xxx)
+     * - Exact region match → (region=idx+1, lifecycle=MAX)
+     * - Unknown → (region=MAX, lifecycle=MAX)
+     *
+     * Example with gov region, beta lifecycle:
+     *   beta-gov → (1, 4, "beta-gov")
+     *   gov-beta → (1, 4, "gov-beta")
+     *   gov      → (1, 999, "gov")
+     */
+    public static Comparator<String> comparator(List<String> lifecycleOrder, List<String> regionOrder) {
         return (a, b) -> {
-            int pa = priority(a, lifecycleOrder);
-            int pb = priority(b, lifecycleOrder);
-            if (pa != pb) return Integer.compare(pa, pb);
-            return a.compareTo(b);
+            var ka = sortKey(a, lifecycleOrder, regionOrder);
+            var kb = sortKey(b, lifecycleOrder, regionOrder);
+            int cmp = Integer.compare(ka[0], kb[0]); // region
+            if (cmp != 0) return cmp;
+            cmp = Integer.compare(ka[1], kb[1]); // lifecycle
+            if (cmp != 0) return cmp;
+            return a.compareTo(b); // alphabetical tiebreaker
         };
     }
 
-    private static int priority(String env, List<String> order) {
-        var idx = order.indexOf(env);
-        if (idx >= 0) return idx * 100;
+    private static int[] sortKey(String env, List<String> lifecycle, List<String> regions) {
+        // Exact lifecycle match → base region (0)
+        var lcIdx = lifecycle.indexOf(env);
+        if (lcIdx >= 0) return new int[]{0, lcIdx};
 
-        // Base-prefix variant: "beta-dr" → after "beta"
-        for (int i = 0; i < order.size(); i++) {
-            var base = order.get(i);
-            if (env.startsWith(base + "-")) {
-                return i * 100 + 50;
+        // Check region prefix: "gov-beta" → region=gov, lifecycle=beta
+        for (int r = 0; r < regions.size(); r++) {
+            var region = regions.get(r);
+            if (env.startsWith(region + "-")) {
+                var rest = env.substring(region.length() + 1);
+                var li = lifecycle.indexOf(rest);
+                return new int[]{r + 1, li >= 0 ? li : 998};
             }
         }
 
-        // Suffix variant: "ncgn-real" → grouped by lifecycle suffix
-        for (int i = 0; i < order.size(); i++) {
-            var base = order.get(i);
-            if (env.endsWith("-" + base)) {
-                return 900 + i;
+        // Check region suffix: "beta-gov" → region=gov, lifecycle=beta
+        for (int r = 0; r < regions.size(); r++) {
+            var region = regions.get(r);
+            if (env.endsWith("-" + region)) {
+                var rest = env.substring(0, env.length() - region.length() - 1);
+                var li = lifecycle.indexOf(rest);
+                return new int[]{r + 1, li >= 0 ? li : 998};
             }
         }
 
-        return 9999;
+        // Exact region match → after all lifecycles in that region
+        var rIdx = regions.indexOf(env);
+        if (rIdx >= 0) return new int[]{rIdx + 1, 999};
+
+        // Unknown
+        return new int[]{9999, 9999};
     }
 
     public String toFileName() {
