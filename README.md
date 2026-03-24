@@ -4,6 +4,34 @@ A tool for managing Spring Boot multi-environment YAML config files using Markdo
 
 View and edit all environment settings (dev, beta, real, gov, ...) in a single master Markdown file, and automatically generate per-environment `application-{profile}.yml` files.
 
+## Screenshots
+
+### Context Menu
+
+Select YAML files or directories in Project View, then right-click to access **YAML Lens** and **Migrate YAML to Master Markdown**.
+
+![Context Menu](docs/images/01-context-menu.png)
+
+### YAML Lens — Multi-Profile Property Viewer
+
+View all properties across multiple YAML files in a single table. Filter by property name, value, or profile. Export to CSV.
+
+![YAML Lens](docs/images/02-yaml-lens.png)
+
+### Visual Table Editor — Master-Detail Layout
+
+Open `master-config.md` and click the **Table** tab. Browse properties by group on the left, edit values per environment on the right.
+
+![Visual Table Editor](docs/images/03-table-editor.png)
+
+### Settings — Environment Sort Order
+
+Configure lifecycle order, region order, master file path, and output directory in **Settings > Tools > Spring Config Table**.
+
+![Settings](docs/images/04-settings.png)
+
+---
+
 ## Key Features
 
 - **Markdown → YAML Generation** — Auto-generate per-environment YAML from master Markdown tables (with comments)
@@ -95,7 +123,9 @@ Running `mvn compile` (or higher) auto-generates `master-config.md` → `src/mai
 
 Or install from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/30833-spring-config-table).
 
-#### Visual Table Editor
+## User Guide
+
+### Visual Table Editor
 
 Open a `master-config.md` file and click the **Table** tab at the bottom of the editor. Or right-click → **Open Table Editor**.
 
@@ -105,7 +135,7 @@ Open a `master-config.md` file and click the **Table** tab at the bottom of the 
 - Spring metadata-based type detection (falls back to auto-detect from value)
 - Add/Rename/Delete Property, Section, Environment
 
-#### YAML Lens (Viewer)
+### YAML Lens (Viewer)
 
 1. Select YAML files, Markdown master files, or a directory in Project View
 2. Right-click → **YAML Lens**
@@ -114,19 +144,19 @@ Open a `master-config.md` file and click the **Table** tab at the bottom of the 
 5. CSV export
 6. Modeless — editor remains interactive
 
-#### YAML → Markdown Migration
+### YAML → Markdown Migration
 
 1. Select `application*.yml` files in Project View
 2. Right-click → **Migrate YAML to Master Markdown**
 3. Choose save location → master Markdown generated (with comments)
 
-#### Auto YAML Generation
+### Auto YAML Generation
 
 1. Configure mappings in **Settings > Tools > Spring Config Table** (master file path ↔ output directory)
 2. YAML auto-generated on master file save (500ms debounce)
 3. Manual: **Tools > Generate YAML from Master Markdown**
 
-#### Environment Sort Order
+### Environment Sort Order
 
 Configure two sort orders in Settings:
 
