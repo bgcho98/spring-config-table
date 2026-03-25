@@ -10,6 +10,7 @@ import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.fileChooser.FileSaverDescriptor;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.vfs.VirtualFileManager;
+import com.pinkmandarin.sct.core.config.SctProjectConfig;
 import com.pinkmandarin.sct.core.importer.YamlImporter;
 import com.pinkmandarin.sct.core.master.MasterMarkdownWriter;
 import org.jetbrains.annotations.NotNull;
@@ -47,9 +48,16 @@ public class MigrateToMarkdownAction extends AnAction {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 var parseResult = new YamlImporter().importFiles(filePaths);
+                var basePath = project.getBasePath();
+                var projectConfig = basePath != null
+                        ? SctProjectConfig.load(Path.of(basePath)) : null;
                 var sctS = SctSettings.getInstance(project);
+                var lifecycle = projectConfig != null
+                        ? projectConfig.lifecycleOrder() : sctS.getLifecycleOrderList();
+                var region = projectConfig != null
+                        ? projectConfig.regionOrder() : sctS.getRegionOrderList();
                 new MasterMarkdownWriter()
-                        .withEnvOrder(sctS.getLifecycleOrderList(), sctS.getRegionOrderList())
+                        .withEnvOrder(lifecycle, region)
                         .write(parseResult.properties(), outputPath);
 
                 ApplicationManager.getApplication().invokeLater(() ->

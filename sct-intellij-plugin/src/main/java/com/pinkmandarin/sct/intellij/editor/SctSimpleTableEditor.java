@@ -39,8 +39,6 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
     private List<Property> allProperties = new ArrayList<>();
     private List<String> sections = new ArrayList<>();
     private List<String> environments = new ArrayList<>();
-    private String embeddedLifecycleOrder = null;
-    private String embeddedRegionOrder = null;
 
     private JComboBox<String> sectionCombo;
     private SearchTextField searchField;
@@ -72,8 +70,6 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
         try {
             var result = new MasterMarkdownParser().parse(Path.of(file.getPath()));
             allProperties = new ArrayList<>(result.properties());
-            embeddedLifecycleOrder = result.lifecycleOrder();
-            embeddedRegionOrder = result.regionOrder();
             var envOrder = resolveEnvOrder();
             var envComparator = Environment.comparator(envOrder.lifecycle, envOrder.region);
             environments = result.environments().stream()
@@ -529,19 +525,20 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
         }
     }
 
-    // === Config resolution: embedded (master file) > IDE settings ===
+    // === Config resolution: .sct-config.yml > IDE settings ===
 
     private record EnvOrder(List<String> lifecycle, List<String> region) {}
 
     private EnvOrder resolveEnvOrder() {
+        var basePath = project.getBasePath();
+        if (basePath != null) {
+            var projectConfig = com.pinkmandarin.sct.core.config.SctProjectConfig.load(java.nio.file.Path.of(basePath));
+            if (projectConfig != null) {
+                return new EnvOrder(projectConfig.lifecycleOrder(), projectConfig.regionOrder());
+            }
+        }
         var sctS = com.pinkmandarin.sct.intellij.SctSettings.getInstance(project);
-        var lifecycle = embeddedLifecycleOrder != null
-                ? com.pinkmandarin.sct.intellij.SctSettings.parseCommaSeparated(embeddedLifecycleOrder)
-                : sctS.getLifecycleOrderList();
-        var region = embeddedRegionOrder != null
-                ? com.pinkmandarin.sct.intellij.SctSettings.parseCommaSeparated(embeddedRegionOrder)
-                : sctS.getRegionOrderList();
-        return new EnvOrder(lifecycle, region);
+        return new EnvOrder(sctS.getLifecycleOrderList(), sctS.getRegionOrderList());
     }
 
     // === FileEditor ===

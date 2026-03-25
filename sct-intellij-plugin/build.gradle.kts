@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.pinkmandarin"
-version = "1.1.1"
+version = "1.2.0"
 
 val sctCoreVersion: String by project
 
@@ -43,7 +43,7 @@ intellijPlatform {
                 <li><b>Auto-Generation</b> — Automatically regenerates per-environment YAML files when the master Markdown changes</li>
                 <li><b>Spring Metadata</b> — Type detection and auto-completion from spring-configuration-metadata.json</li>
                 <li><b>Comment Round-Trip</b> — YAML inline comments preserved as HTML comments in Markdown</li>
-                <li><b>Embedded Config</b> — Environment sort order stored in master file (&lt;!-- sct-config --&gt;) for team sharing via Git</li>
+                <li><b>Shareable Config</b> — Environment sort order in .sct-config.yml for team sharing via Git</li>
                 <li><b>Multi-Module</b> — Configure different master files and output paths per module</li>
             </ul>
         """.trimIndent()
@@ -59,13 +59,13 @@ intellijPlatform {
 
     pluginConfiguration {
         changeNotes = """
-            <h3>1.1.1</h3>
+            <h3>1.2.0</h3>
             <ul>
+                <li>Shareable config: .sct-config.yml in project root for Git-based team sharing of environment sort order (replaces embedded &lt;!-- sct-config --&gt;)</li>
                 <li>Fix deprecated API usages (FileSaverDescriptor, Project.getBaseDir)</li>
             </ul>
             <h3>1.1.0</h3>
             <ul>
-                <li>Embedded config: lifecycle/region sort order stored inside master Markdown (&lt;!-- sct-config --&gt;) for Git-based team sharing</li>
                 <li>YAML Lens: precise double-click navigation using SnakeYAML Node API (fixes wrong line when duplicate key names exist)</li>
                 <li>Migration: file save dialog now defaults to project root directory</li>
                 <li>Settings: hint that embedded config in master file takes precedence over IDE settings</li>

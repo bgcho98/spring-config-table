@@ -40,7 +40,7 @@ Configure lifecycle order, region order, master file path, and output directory 
 - **Visual Table Editor** — Master-Detail layout to browse/search properties by group and edit values + comments per environment
 - **Auto-Detection** — Automatically regenerate YAML when master file changes (IntelliJ / Maven)
 - **Multi-Module** — Configure different master files and output paths per module
-- **Embedded Config** — Environment sort order stored in master file (`<!-- sct-config -->`) for team sharing via Git
+- **Shareable Config** — Environment sort order in `.sct-config.yml` for team sharing via Git
 - **Spring Metadata Integration** — Type detection, auto-completion, and unknown property warnings from `spring-configuration-metadata.json`
 
 ## Master Markdown Format
@@ -161,22 +161,20 @@ Open a `master-config.md` file and click the **Table** tab at the bottom of the 
 
 Environment sort order can be configured in two ways:
 
-#### 1. Embedded in master file (recommended for team sharing)
+#### 1. Project config file (recommended for team sharing)
 
-Add a `<!-- sct-config -->` block at the top of your `master-config.md`:
+Create `.sct-config.yml` in the project root:
 
-```markdown
-<!-- sct-config
+```yaml
 lifecycle-order: default, local, dev, alpha, beta, beta-dr, real, release, dr
 region-order: us, eu, ap
--->
 ```
 
-This is automatically generated when migrating YAML to Markdown, and preserved on every save. Since it lives in the master file, the sort order is shared via Git with your team.
+This file can be committed to Git so all team members share the same sort order.
 
 #### 2. IDE Settings (fallback)
 
-**Settings > Tools > Spring Config Table** — used as default when creating a new master file. If the master file contains `<!-- sct-config -->`, the embedded config takes precedence.
+**Settings > Tools > Spring Config Table** — used when `.sct-config.yml` does not exist.
 
 **Result**: base group first, then each region group in order, with lifecycle order applied within each group.
 
