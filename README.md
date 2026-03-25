@@ -40,6 +40,7 @@ Configure lifecycle order, region order, master file path, and output directory 
 - **Visual Table Editor** — Master-Detail layout to browse/search properties by group and edit values + comments per environment
 - **Auto-Detection** — Automatically regenerate YAML when master file changes (IntelliJ / Maven)
 - **Multi-Module** — Configure different master files and output paths per module
+- **Embedded Config** — Environment sort order stored in master file (`<!-- sct-config -->`) for team sharing via Git
 - **Spring Metadata Integration** — Type detection, auto-completion, and unknown property warnings from `spring-configuration-metadata.json`
 
 ## Master Markdown Format
@@ -158,12 +159,26 @@ Open a `master-config.md` file and click the **Table** tab at the bottom of the 
 
 ### Environment Sort Order
 
-Configure two sort orders in Settings:
+Environment sort order can be configured in two ways:
 
-- **Lifecycle order**: `default, local, dev, alpha, beta, beta-dr, real, release, dr`
-- **Region order**: Configure your region/datacenter prefixes (e.g., `us, eu, ap`)
+#### 1. Embedded in master file (recommended for team sharing)
 
-Result: base group first, then each region group in order, with lifecycle order applied within each group.
+Add a `<!-- sct-config -->` block at the top of your `master-config.md`:
+
+```markdown
+<!-- sct-config
+lifecycle-order: default, local, dev, alpha, beta, beta-dr, real, release, dr
+region-order: us, eu, ap
+-->
+```
+
+This is automatically generated when migrating YAML to Markdown, and preserved on every save. Since it lives in the master file, the sort order is shared via Git with your team.
+
+#### 2. IDE Settings (fallback)
+
+**Settings > Tools > Spring Config Table** — used as default when creating a new master file. If the master file contains `<!-- sct-config -->`, the embedded config takes precedence.
+
+**Result**: base group first, then each region group in order, with lifecycle order applied within each group.
 
 ## Escape Rules
 
