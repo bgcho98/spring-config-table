@@ -8,6 +8,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.fileChooser.FileSaverDescriptor;
+import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.pinkmandarin.sct.core.importer.YamlImporter;
 import com.pinkmandarin.sct.core.master.MasterMarkdownWriter;
@@ -34,9 +35,9 @@ public class MigrateToMarkdownAction extends AnAction {
         if (yamlFiles.isEmpty()) return;
 
         var descriptor = new FileSaverDescriptor(
-                SctBundle.message("migrate.saveTitle"), "", "md");
+                SctBundle.message("migrate.saveTitle"), "");
         var wrapper = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project);
-        var baseDir = project.getBaseDir();
+        var baseDir = ProjectUtil.guessProjectDir(project);
         var result = wrapper.save(baseDir, "master-config.md");
         if (result == null) return;
 
