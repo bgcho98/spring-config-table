@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.pinkmandarin"
-version = "1.1.0"
+version = "1.1.1"
 
 val sctCoreVersion: String by project
 
@@ -59,6 +59,10 @@ intellijPlatform {
 
     pluginConfiguration {
         changeNotes = """
+            <h3>1.1.1</h3>
+            <ul>
+                <li>Fix deprecated API usages (FileSaverDescriptor, Project.getBaseDir)</li>
+            </ul>
             <h3>1.1.0</h3>
             <ul>
                 <li>Embedded config: lifecycle/region sort order stored inside master Markdown (&lt;!-- sct-config --&gt;) for Git-based team sharing</li>
