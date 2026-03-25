@@ -42,6 +42,18 @@ public class MasterMarkdownWriter {
         sb.append("> Edit this file and the Maven/IntelliJ plugin will auto-generate per-environment YAML files.\n");
         sb.append("> `_default` = application.yml, empty cell = inherit default, `null` = explicit null override\n\n");
 
+        // Write sct-config block if env order is set
+        if (!lifecycleOrder.isEmpty() || !regionOrder.isEmpty()) {
+            sb.append("<!-- sct-config\n");
+            if (!lifecycleOrder.isEmpty()) {
+                sb.append("lifecycle-order: ").append(String.join(", ", lifecycleOrder)).append("\n");
+            }
+            if (!regionOrder.isEmpty()) {
+                sb.append("region-order: ").append(String.join(", ", regionOrder)).append("\n");
+            }
+            sb.append("-->\n\n");
+        }
+
         var bySection = properties.stream()
                 .collect(Collectors.groupingBy(Property::section, () -> new TreeMap<>(sectionComparator()), Collectors.toList()));
 

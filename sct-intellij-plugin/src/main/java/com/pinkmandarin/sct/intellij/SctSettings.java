@@ -40,6 +40,10 @@ public final class SctSettings implements PersistentStateComponent<SctSettings.S
     public List<String> getLifecycleOrderList() { return parseList(state.lifecycleOrder, DEFAULT_LIFECYCLE_ORDER); }
     public List<String> getRegionOrderList() { return parseList(state.regionOrder, DEFAULT_REGION_ORDER); }
 
+    public static List<String> parseCommaSeparated(String value) {
+        return parseList(value, "");
+    }
+
     private static List<String> parseList(String value, String fallback) {
         var s = (value == null || value.isBlank()) ? fallback : value;
         var result = new ArrayList<String>();

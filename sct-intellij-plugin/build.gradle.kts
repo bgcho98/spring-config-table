@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.pinkmandarin"
-version = "1.0.0"
+version = "1.1.0"
 
 val sctCoreVersion: String by project
 
@@ -38,11 +38,12 @@ intellijPlatform {
             <p>Manage Spring Boot multi-environment YAML config files using a single Markdown table.</p>
             <ul>
                 <li><b>Visual Table Editor</b> — Master-Detail layout with grouped property list, search filter, and inline editing for all environments</li>
-                <li><b>YAML Lens</b> — View multiple YAML/Markdown files as a searchable property table with CSV export</li>
+                <li><b>YAML Lens</b> — View multiple YAML/Markdown files as a searchable property table with CSV export and precise source navigation</li>
                 <li><b>YAML ↔ Markdown Migration</b> — Convert existing YAML files to master Markdown (with comments) and back</li>
                 <li><b>Auto-Generation</b> — Automatically regenerates per-environment YAML files when the master Markdown changes</li>
                 <li><b>Spring Metadata</b> — Type detection and auto-completion from spring-configuration-metadata.json</li>
                 <li><b>Comment Round-Trip</b> — YAML inline comments preserved as HTML comments in Markdown</li>
+                <li><b>Embedded Config</b> — Environment sort order stored in master file (&lt;!-- sct-config --&gt;) for team sharing via Git</li>
                 <li><b>Multi-Module</b> — Configure different master files and output paths per module</li>
             </ul>
         """.trimIndent()
@@ -58,6 +59,13 @@ intellijPlatform {
 
     pluginConfiguration {
         changeNotes = """
+            <h3>1.1.0</h3>
+            <ul>
+                <li>Embedded config: lifecycle/region sort order stored inside master Markdown (&lt;!-- sct-config --&gt;) for Git-based team sharing</li>
+                <li>YAML Lens: precise double-click navigation using SnakeYAML Node API (fixes wrong line when duplicate key names exist)</li>
+                <li>Migration: file save dialog now defaults to project root directory</li>
+                <li>Settings: hint that embedded config in master file takes precedence over IDE settings</li>
+            </ul>
             <h3>1.0.0</h3>
             <ul>
                 <li>Initial release</li>

@@ -36,7 +36,8 @@ public class MigrateToMarkdownAction extends AnAction {
         var descriptor = new FileSaverDescriptor(
                 SctBundle.message("migrate.saveTitle"), "", "md");
         var wrapper = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project);
-        var result = wrapper.save("master-config.md");
+        var baseDir = project.getBaseDir();
+        var result = wrapper.save(baseDir, "master-config.md");
         if (result == null) return;
 
         var outputPath = Path.of(result.getFile().getPath());

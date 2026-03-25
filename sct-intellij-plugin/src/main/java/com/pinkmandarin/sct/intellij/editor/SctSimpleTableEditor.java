@@ -39,6 +39,8 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
     private List<Property> allProperties = new ArrayList<>();
     private List<String> sections = new ArrayList<>();
     private List<String> environments = new ArrayList<>();
+    private String embeddedLifecycleOrder = null;
+    private String embeddedRegionOrder = null;
 
     private JComboBox<String> sectionCombo;
     private SearchTextField searchField;
@@ -70,8 +72,10 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
         try {
             var result = new MasterMarkdownParser().parse(Path.of(file.getPath()));
             allProperties = new ArrayList<>(result.properties());
-            var sctSettings = com.pinkmandarin.sct.intellij.SctSettings.getInstance(project);
-            var envComparator = Environment.comparator(sctSettings.getLifecycleOrderList(), sctSettings.getRegionOrderList());
+            embeddedLifecycleOrder = result.lifecycleOrder();
+            embeddedRegionOrder = result.regionOrder();
+            var envOrder = resolveEnvOrder();
+            var envComparator = Environment.comparator(envOrder.lifecycle, envOrder.region);
             environments = result.environments().stream()
                     .map(Environment::name)
                     .sorted(envComparator)
@@ -453,9 +457,9 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
 
     private void save() {
         try {
-            var sctS = com.pinkmandarin.sct.intellij.SctSettings.getInstance(project);
+            var envOrder = resolveEnvOrder();
             new MasterMarkdownWriter()
-                    .withEnvOrder(sctS.getLifecycleOrderList(), sctS.getRegionOrderList())
+                    .withEnvOrder(envOrder.lifecycle, envOrder.region)
                     .write(allProperties, Path.of(file.getPath()));
             file.refresh(false, false);
             setStatus("Saved!", false);
@@ -523,6 +527,21 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
 
             return super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
         }
+    }
+
+    // === Config resolution: embedded (master file) > IDE settings ===
+
+    private record EnvOrder(List<String> lifecycle, List<String> region) {}
+
+    private EnvOrder resolveEnvOrder() {
+        var sctS = com.pinkmandarin.sct.intellij.SctSettings.getInstance(project);
+        var lifecycle = embeddedLifecycleOrder != null
+                ? com.pinkmandarin.sct.intellij.SctSettings.parseCommaSeparated(embeddedLifecycleOrder)
+                : sctS.getLifecycleOrderList();
+        var region = embeddedRegionOrder != null
+                ? com.pinkmandarin.sct.intellij.SctSettings.parseCommaSeparated(embeddedRegionOrder)
+                : sctS.getRegionOrderList();
+        return new EnvOrder(lifecycle, region);
     }
 
     // === FileEditor ===

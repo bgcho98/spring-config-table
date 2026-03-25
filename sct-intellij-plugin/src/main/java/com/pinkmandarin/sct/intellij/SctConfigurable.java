@@ -46,14 +46,22 @@ public class SctConfigurable implements Configurable {
         // Lifecycle order
         topPanel.add(makeFieldRow(SctBundle.message("settings.lifecycleOrder"),
                 lifecycleOrderField = new JTextField(settings.getLifecycleOrder()),
-                "Lifecycle stages in order (comma-separated). e.g., default, local, dev, alpha, beta, real, release, dr"));
+                SctBundle.message("settings.lifecycleOrder.tooltip")));
         topPanel.add(Box.createVerticalStrut(4));
 
         // Region order
         topPanel.add(makeFieldRow(SctBundle.message("settings.regionOrder"),
                 regionOrderField = new JTextField(settings.getRegionOrder()),
-                "Region/special env prefixes in order (comma-separated). Base (no region) is always first."));
+                SctBundle.message("settings.regionOrder.tooltip")));
         topPanel.add(Box.createVerticalStrut(4));
+
+        // Hint about embedded config
+        var hintLabel = new JLabel(SctBundle.message("settings.envOrderHint"));
+        hintLabel.setFont(hintLabel.getFont().deriveFont(Font.ITALIC, 11f));
+        hintLabel.setForeground(com.intellij.ui.JBColor.GRAY);
+        hintLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        topPanel.add(hintLabel);
+        topPanel.add(Box.createVerticalStrut(8));
 
         panel.add(topPanel, BorderLayout.NORTH);
 

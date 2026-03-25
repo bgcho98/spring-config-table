@@ -16,6 +16,12 @@ import com.pinkmandarin.sct.core.importer.YamlImporter;
 import com.pinkmandarin.sct.core.master.MasterMarkdownParser;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.composer.Composer;
+import org.yaml.snakeyaml.nodes.*;
+import org.yaml.snakeyaml.parser.ParserImpl;
+import org.yaml.snakeyaml.reader.StreamReader;
+import org.yaml.snakeyaml.resolver.Resolver;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -25,6 +31,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,15 +79,17 @@ public class YamlLensAction extends AnAction {
                     for (var prop : result.properties()) {
                         var fullKey = prop.section() + "." + prop.key();
                         var value = prop.isNullValue() ? "null" : (prop.value() != null ? prop.value() : "");
-                        rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath()));
+                        rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath(), -1));
                     }
                 } else {
                     var envName = YamlImporter.extractEnvName(Path.of(file.getName()));
+                    var lineMap = buildLineMap(Path.of(file.getPath()));
                     var props = importer.parseFile(Path.of(file.getPath()), envName);
                     for (var prop : props) {
                         var fullKey = prop.section() + "." + prop.key();
                         var value = prop.isNullValue() ? "null" : (prop.value() != null ? prop.value() : "");
-                        rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath()));
+                        var line = lineMap.getOrDefault(fullKey, -1);
+                        rows.add(new PropertyRow(fullKey, prop.env(), value, file.getPath(), line));
                     }
                 }
             } catch (IOException ex) {
@@ -94,7 +103,71 @@ public class YamlLensAction extends AnAction {
         return rows;
     }
 
-    record PropertyRow(String property, String profile, String value, String filePath) {}
+    /**
+     * Builds a map of full property key -> source line number using SnakeYAML Node API.
+     * Each Node carries a startMark with the exact line number from the YAML source.
+     */
+    private Map<String, Integer> buildLineMap(Path file) {
+        var lineMap = new HashMap<String, Integer>();
+        try {
+            var content = Files.readString(file, StandardCharsets.UTF_8);
+            var loaderOptions = new LoaderOptions();
+            var composer = new Composer(
+                    new ParserImpl(new StreamReader(new StringReader(content)), loaderOptions),
+                    new Resolver(),
+                    loaderOptions
+            );
+            while (composer.checkNode()) {
+                var rootNode = composer.getNode();
+                if (rootNode instanceof MappingNode mappingNode) {
+                    for (var tuple : mappingNode.getValue()) {
+                        if (tuple.getKeyNode() instanceof ScalarNode keyNode) {
+                            var section = keyNode.getValue();
+                            if (tuple.getValueNode() instanceof MappingNode valueMapping) {
+                                collectLineNumbers(section, "", valueMapping, lineMap);
+                            } else {
+                                lineMap.put(section + ".__scalar__",
+                                        tuple.getValueNode().getStartMark().getLine());
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            com.intellij.openapi.diagnostic.Logger.getInstance(YamlLensAction.class)
+                    .warn("Failed to build line map: " + file, ex);
+        }
+        return lineMap;
+    }
+
+    private void collectLineNumbers(String section, String prefix, MappingNode node,
+                                    Map<String, Integer> lineMap) {
+        for (var tuple : node.getValue()) {
+            if (!(tuple.getKeyNode() instanceof ScalarNode keyNode)) continue;
+            var escapedKey = keyNode.getValue().replace("\\", "\\\\").replace(".", "\\.");
+            var key = prefix.isEmpty() ? escapedKey : prefix + "." + escapedKey;
+            var valueNode = tuple.getValueNode();
+
+            if (valueNode instanceof MappingNode mappingValue) {
+                collectLineNumbers(section, key, mappingValue, lineMap);
+            } else if (valueNode instanceof SequenceNode sequenceNode) {
+                var items = sequenceNode.getValue();
+                for (int i = 0; i < items.size(); i++) {
+                    var item = items.get(i);
+                    if (item instanceof MappingNode itemMapping) {
+                        collectLineNumbers(section, key + "[" + i + "]", itemMapping, lineMap);
+                    } else {
+                        lineMap.put(section + "." + key + "[" + i + "]",
+                                item.getStartMark().getLine());
+                    }
+                }
+            } else {
+                lineMap.put(section + "." + key, keyNode.getStartMark().getLine());
+            }
+        }
+    }
+
+    record PropertyRow(String property, String profile, String value, String filePath, int sourceLine) {}
 
     private static class YamlLensDialog extends DialogWrapper {
 
@@ -243,37 +316,13 @@ public class YamlLensAction extends AnAction {
         var vf = LocalFileSystem.getInstance().findFileByPath(row.filePath);
         if (vf == null) return;
 
-        var searchKey = extractLastKeySegment(row.property);
-        int line = findLineInFile(vf, searchKey);
-
-        var descriptor = new OpenFileDescriptor(project, vf, Math.max(line, 0), 0);
+        int line = Math.max(row.sourceLine, 0);
+        var descriptor = new OpenFileDescriptor(project, vf, line, 0);
         var editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, true);
-        if (editor != null && line >= 0) {
+        if (editor != null) {
             editor.getCaretModel().moveToOffset(editor.getDocument().getLineStartOffset(line));
             editor.getScrollingModel().scrollToCaret(ScrollType.CENTER);
         }
-    }
-
-    private static String extractLastKeySegment(String fullProperty) {
-        var lastDot = fullProperty.lastIndexOf('.');
-        return lastDot >= 0 ? fullProperty.substring(lastDot + 1) : fullProperty;
-    }
-
-    private static int findLineInFile(VirtualFile file, String searchKey) {
-        try {
-            var lines = Files.readAllLines(Path.of(file.getPath()), StandardCharsets.UTF_8);
-            var cleanKey = searchKey.replaceAll("\\[\\d+]", "");
-            for (int i = 0; i < lines.size(); i++) {
-                var trimmed = lines.get(i).trim();
-                if (trimmed.startsWith(cleanKey + ":") || trimmed.startsWith(cleanKey + " :")) {
-                    return i;
-                }
-            }
-        } catch (IOException ex) {
-            com.intellij.openapi.diagnostic.Logger.getInstance(YamlLensAction.class)
-                    .warn("Failed to read: " + file.getPath(), ex);
-        }
-        return 0;
     }
 
     static class LensTableModel extends AbstractTableModel {

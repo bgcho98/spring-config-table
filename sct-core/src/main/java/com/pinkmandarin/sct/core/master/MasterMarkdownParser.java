@@ -27,6 +27,21 @@ public class MasterMarkdownParser {
         var envNames = new LinkedHashSet<String>();
         envNames.add(Environment.DEFAULT_ENV);
 
+        // Parse embedded sct-config
+        String lifecycleOrder = null;
+        String regionOrder = null;
+        var configBlock = extractConfigBlock(lines);
+        if (configBlock != null) {
+            for (var configLine : configBlock.split("\n")) {
+                var trimmed = configLine.trim();
+                if (trimmed.startsWith("lifecycle-order:")) {
+                    lifecycleOrder = trimmed.substring("lifecycle-order:".length()).trim();
+                } else if (trimmed.startsWith("region-order:")) {
+                    regionOrder = trimmed.substring("region-order:".length()).trim();
+                }
+            }
+        }
+
         String currentSection = null;
         String currentPrefix = null;
         List<String> columnKeys = null;
@@ -124,7 +139,37 @@ public class MasterMarkdownParser {
             environments.add(new Environment(name));
         }
 
-        return new ParseResult(properties, environments);
+        return new ParseResult(properties, environments, lifecycleOrder, regionOrder);
+    }
+
+    /**
+     * Extracts the content of a &lt;!-- sct-config ... --&gt; block from the file.
+     * Returns null if not found.
+     */
+    private String extractConfigBlock(List<String> lines) {
+        var sb = new StringBuilder();
+        boolean inBlock = false;
+        for (var line : lines) {
+            var trimmed = line.trim();
+            if (!inBlock) {
+                if (trimmed.startsWith("<!-- sct-config")) {
+                    inBlock = true;
+                    // Handle single-line block: <!-- sct-config ... -->
+                    var endIdx = trimmed.indexOf("-->", 15);
+                    if (endIdx >= 0) {
+                        return trimmed.substring(15, endIdx).trim();
+                    }
+                }
+            } else {
+                if (trimmed.contains("-->")) {
+                    var endIdx = trimmed.indexOf("-->");
+                    sb.append(trimmed, 0, endIdx);
+                    return sb.toString().trim();
+                }
+                sb.append(trimmed).append("\n");
+            }
+        }
+        return null;
     }
 
     /**

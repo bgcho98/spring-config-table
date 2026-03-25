@@ -95,7 +95,7 @@ cd sct-intellij-plugin
 ```
 
 Build output:
-- IntelliJ plugin ZIP: `sct-intellij-plugin/build/distributions/sct-intellij-plugin-1.0.0.zip`
+- IntelliJ plugin ZIP: `sct-intellij-plugin/build/distributions/sct-intellij-plugin-1.1.0.zip`
 
 ### Maven Plugin
 
@@ -103,7 +103,7 @@ Build output:
 <plugin>
     <groupId>com.pinkmandarin</groupId>
     <artifactId>sct-maven-plugin</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <configuration>
         <masterFile>${project.basedir}/master-config.md</masterFile>
     </configuration>
