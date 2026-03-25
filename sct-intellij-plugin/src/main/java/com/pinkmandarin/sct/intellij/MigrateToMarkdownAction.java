@@ -60,6 +60,11 @@ public class MigrateToMarkdownAction extends AnAction {
                         .withEnvOrder(lifecycle, region)
                         .write(parseResult.properties(), outputPath);
 
+                // Auto-create .sct-config.yml if it doesn't exist
+                if (basePath != null && projectConfig == null) {
+                    new SctProjectConfig(lifecycle, region).save(Path.of(basePath));
+                }
+
                 ApplicationManager.getApplication().invokeLater(() ->
                         VirtualFileManager.getInstance().asyncRefresh(() ->
                                 notify(project, SctBundle.message("migrate.success", yamlFiles.size(), outputPath.getFileName()),
