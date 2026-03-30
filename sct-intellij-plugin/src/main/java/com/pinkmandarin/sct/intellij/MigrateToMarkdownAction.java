@@ -5,6 +5,7 @@ import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.WriteIntentReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.fileChooser.FileSaverDescriptor;
@@ -66,9 +67,10 @@ public class MigrateToMarkdownAction extends AnAction {
                 }
 
                 ApplicationManager.getApplication().invokeLater(() ->
-                        VirtualFileManager.getInstance().asyncRefresh(() ->
-                                notify(project, SctBundle.message("migrate.success", yamlFiles.size(), outputPath.getFileName()),
-                                        NotificationType.INFORMATION)));
+                        WriteIntentReadAction.run((Runnable) () ->
+                                VirtualFileManager.getInstance().asyncRefresh(() ->
+                                        notify(project, SctBundle.message("migrate.success", yamlFiles.size(), outputPath.getFileName()),
+                                                NotificationType.INFORMATION))));
             } catch (Exception ex) {
                 LOG.warn("Migration failed", ex);
                 notify(project, SctBundle.message("migrate.failed", ex.getMessage()), NotificationType.ERROR);
