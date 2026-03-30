@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.pinkmandarin"
-version = "1.2.1"
+version = "1.2.2"
 
 val sctCoreVersion: String by project
 
@@ -59,10 +59,11 @@ intellijPlatform {
 
     pluginConfiguration {
         changeNotes = """
-            <h3>1.2.1</h3>
+            <h3>1.2.2</h3>
             <ul>
                 <li>Support IntelliJ IDEA 2026.1 (build 261)</li>
-                <li>Fix VFS refresh threading issue on 2026.1+ (WriteIntentReadAction required for VFS refresh on EDT)</li>
+                <li>Fix VFS refresh threading issue on 2026.1+ (wrap in WriteAction for EDT compatibility)</li>
+                <li>Replace experimental WriteIntentReadAction with stable WriteAction API</li>
             </ul>
             <h3>1.2.0</h3>
             <ul>
