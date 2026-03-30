@@ -1,7 +1,7 @@
 package com.pinkmandarin.sct.intellij.editor;
 
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.WriteIntentReadAction;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorState;
@@ -460,7 +460,7 @@ public class SctSimpleTableEditor extends UserDataHolderBase implements FileEdit
                     .withEnvOrder(envOrder.lifecycle, envOrder.region)
                     .write(allProperties, Path.of(file.getPath()));
             ApplicationManager.getApplication().invokeLater(() ->
-                    WriteIntentReadAction.run((Runnable) () -> file.refresh(false, false)));
+                    WriteAction.run(() -> file.refresh(false, false)));
             setStatus("Saved!", false);
         } catch (IOException e) {
             LOG.warn("Save failed", e);

@@ -3,7 +3,7 @@ package com.pinkmandarin.sct.intellij;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.WriteIntentReadAction;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.pinkmandarin.sct.core.exporter.YamlExporter;
@@ -59,7 +59,7 @@ public class SctGenerator {
                 new YamlExporter().exportAll(result.properties(), result.environments(), outputPath);
 
                 ApplicationManager.getApplication().invokeLater(() ->
-                        WriteIntentReadAction.run((Runnable) () ->
+                        WriteAction.run(() ->
                                 VirtualFileManager.getInstance().asyncRefresh(() ->
                                         notify(project, SctBundle.message("notification.generated", result.environments().size()), NotificationType.INFORMATION))));
             } catch (Exception e) {

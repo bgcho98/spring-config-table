@@ -5,7 +5,7 @@ import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.WriteIntentReadAction;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.fileChooser.FileSaverDescriptor;
@@ -26,6 +26,7 @@ public class MigrateToMarkdownAction extends AnAction {
 
     private static final Logger LOG = Logger.getInstance(MigrateToMarkdownAction.class);
 
+    @SuppressWarnings("deprecation") // FileSaverDescriptor constructor deprecated in 2026.1, no replacement in 2024.3
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         var project = e.getProject();
@@ -67,7 +68,7 @@ public class MigrateToMarkdownAction extends AnAction {
                 }
 
                 ApplicationManager.getApplication().invokeLater(() ->
-                        WriteIntentReadAction.run((Runnable) () ->
+                        WriteAction.run(() ->
                                 VirtualFileManager.getInstance().asyncRefresh(() ->
                                         notify(project, SctBundle.message("migrate.success", yamlFiles.size(), outputPath.getFileName()),
                                                 NotificationType.INFORMATION))));
